@@ -8,6 +8,7 @@ import RelatedSection from './RelatedSection.vue'
 import ScripturesSection from './ScripturesSection.vue'
 import SearchSection, { type SearchOutcome } from './SearchSection.vue'
 import TalkListItem from './TalkListItem.vue'
+import { safeSnippet } from '../utils/markdown'
 
 defineProps<{ talk: TalkDetail }>()
 const ui = useUiStore()
@@ -39,7 +40,7 @@ const relatedCount = ref<number | null>(null)
           <li v-for="v in outcome.verses" :key="v.ref" class="row between">
             <div class="grow">
               <button class="ref" @click="ui.openScripture(v.ref)">{{ v.ref }}</button>
-              <div class="serif muted small" v-html="v.snippet"></div>
+              <div class="serif muted small" v-html="safeSnippet(v.snippet)"></div>
             </div>
             <button class="quiet small" :disabled="lesson.hasPin('scripture', v.ref)" @click="lesson.addPin({ kind: 'scripture', scripture_ref: v.ref })">
               {{ lesson.hasPin('scripture', v.ref) ? 'Pinned' : 'Pin' }}

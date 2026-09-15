@@ -2,6 +2,7 @@
 import type { TalkSummary } from '../api'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
+import { safeSnippet } from '../utils/markdown'
 
 // Boolean props default to false when omitted, so opt-in flags are named for the exception.
 const props = withDefaults(
@@ -37,7 +38,7 @@ function pin() {
         <span v-if="aside" class="aside">{{ aside }}</span>
       </div>
       <ul v-if="snippets && snippets.length" class="snips">
-        <li v-for="(s, i) in snippets" :key="i" class="serif" v-html="s"></li>
+        <li v-for="(s, i) in snippets" :key="i" class="serif" v-html="safeSnippet(s)"></li>
       </ul>
     </div>
     <div class="actions">

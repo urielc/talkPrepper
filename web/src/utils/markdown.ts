@@ -32,6 +32,11 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, '&quot;')
 }
 
+/** Search snippets come from SQLite's highlighter as HTML with <mark> tags; allow nothing else. */
+export function safeSnippet(html: string): string {
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: [] })
+}
+
 /** Strip <mark> tags but keep their text (for plain-text copies). */
 export function stripMarks(s: string): string {
   return s.replace(/<\/?mark>/g, '')
