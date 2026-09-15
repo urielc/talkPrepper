@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Open book with a gold ribbon: the app's own mark -->
+  <path d="M8 14c8-3 15-3 24 3 9-6 16-6 24-3v36c-8-3-15-3-24 3-9-6-16-6-24-3z" fill="#0b2e59"/>
+  <path d="M12 19c6-2 12-1.5 20 3.5v27c-8-5-14-5.5-20-3.5z" fill="#ffffff" opacity=".92"/>
+  <path d="M52 19c-6-2-12-1.5-20 3.5v27c8-5 14-5.5 20-3.5z" fill="#ffffff" opacity=".78"/>
+  <path d="M30.5 22.5h3v33l-1.5-1.3-1.5 1.3z" fill="#b9922e"/>
+</svg>

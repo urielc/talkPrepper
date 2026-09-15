@@ -1,0 +1,21 @@
+# data
+data/*
+!data/README.md
+general_conference_talks*.json
+rescrape.log
+*.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node
+web/node_modules/
+web/dist/
+
+# editor
+.vscode/
+.idea/
+.DS_Store

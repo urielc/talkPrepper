@@ -1,0 +1,254 @@
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--serif);
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--ink);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--blue-2);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.75rem;
+  line-height: 1.3;
+}
+button:hover {
+  background: var(--paper-2);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+button.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+button.primary:hover {
+  filter: brightness(1.1);
+}
+button.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--blue-2);
+  padding: 0.25rem 0.5rem;
+}
+button.quiet:hover {
+  background: var(--blue-soft);
+}
+button.gold {
+  border-color: var(--gold);
+  color: var(--gold-2);
+  background: transparent;
+}
+button.gold:hover {
+  background: var(--gold-soft);
+}
+button.small {
+  font-size: var(--fs-0);
+  padding: 0.2rem 0.55rem;
+}
+
+input[type="text"],
+input[type="search"],
+input[type="password"],
+input[type="email"],
+input[type="url"],
+input[type="number"],
+select,
+textarea {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+}
+textarea {
+  resize: vertical;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+mark {
+  background: var(--gold-mark);
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+.faint {
+  color: var(--ink-3);
+}
+.small {
+  font-size: var(--fs-0);
+}
+.serif {
+  font-family: var(--serif);
+}
+
+.hairline {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 0;
+}
+
+/* Scripture reference chip: the one gold element */
+.ref {
+  font-family: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--gold);
+  padding: 0 0.05em;
+  border-radius: 0;
+  cursor: pointer;
+  line-height: inherit;
+  white-space: nowrap;
+}
+.ref:hover {
+  background: var(--gold-soft);
+}
+.ref.active {
+  background: var(--gold-soft);
+}
+
+/* Lists of results: hairlines, no cards */
+.result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.result-list > li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.result-list > li:last-child {
+  border-bottom: 0;
+}
+
+.talk-title {
+  font-family: var(--serif);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  color: var(--ink);
+}
+.talk-meta {
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.between {
+  justify-content: space-between;
+}
+.wrap {
+  flex-wrap: wrap;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice {
+  border-left: 3px solid var(--gold);
+  background: var(--gold-soft);
+  padding: 0.6rem 0.8rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.notice.error {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--paper));
+}
+.notice.ok {
+  border-left-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, var(--paper));
+}
+
+.empty {
+  color: var(--ink-2);
+  padding: 2rem 0;
+  text-align: left;
+  max-width: 44ch;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

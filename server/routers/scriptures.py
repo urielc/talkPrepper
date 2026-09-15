@@ -1,0 +1,76 @@
+"""Scripture lookup and reverse lookup (which talks cite a passage)."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..citations import parse_scripture_refs
+from ..deps import get_conn
+from ..scriptures import (
+    get_verses, chapter_count, format_ref, display_book, canonical_book, BOOKS, BOOK_VOLUME,
+)
+from .talks import talks_citing
+
+router = APIRouter(tags=["scriptures"])
+
+
+def parse_single_ref(ref: str):
+    refs = parse_scripture_refs(ref.strip())
+    if not refs:
+        # Allow bare "Alma 32" for risky names too when the user typed it deliberately.
+        parts = ref.strip().rsplit(" ", 1)
+        if len(parts) == 2 and parts[1].isdigit() and canonical_book(parts[0]):
+            return canonical_book(parts[0]), int(parts[1]), None, None
+        raise HTTPException(400, f"could not parse scripture reference: {ref!r}")
+    r = refs[0]
+    # Collapse a verse list (3, 5, 7–9) into its span for the lookup.
+    vs = min((x.verse_start for x in refs if x.verse_start is not None), default=None)
+    ve = max((x.verse_end or x.verse_start for x in refs if x.verse_start is not None), default=None)
+    if vs is not None and len(refs) == 1:
+        ve = r.verse_end
+    return r.book, r.chapter, vs, ve
+
+
+@router.get("/scriptures/books")
+def books():
+    return [{"book": display_book(t), "short": s, "volume": v} for t, s, v, _ in BOOKS]
+
+
+@router.get("/scriptures/lookup")
+def lookup(ref: str = Query(..., min_length=3), conn=Depends(get_conn)):
+    book, chapter, vs, ve = parse_single_ref(ref)
+    verses = get_verses(conn, book, chapter, vs, ve)
+    if not verses:
+        raise HTTPException(404, f"no verses for {format_ref(book, chapter, vs, ve)}")
+    return {
+        "ref": format_ref(book, chapter, vs, ve),
+        "book": display_book(book), "volume": BOOK_VOLUME.get(book),
+        "chapter": chapter, "verse_start": vs, "verse_end": ve,
+        "chapters": chapter_count(conn, book),
+        "verses": [v.to_dict() for v in verses],
+    }
+
+
+@router.get("/scriptures/lookup/talks")
+def lookup_talks(ref: str = Query(..., min_length=3), limit: int = Query(50, le=200),
+                 exclude: str | None = None, conn=Depends(get_conn)):
+    book, chapter, vs, ve = parse_single_ref(ref)
+    res = talks_citing(conn, book, chapter, vs, ve, exclude=exclude, limit=limit)
+    res["ref"] = format_ref(book, chapter, vs, ve)
+    return res
+
+
+@router.get("/scriptures/{book}/{chapter}")
+def chapter(book: str, chapter: int, conn=Depends(get_conn)):
+    canon = canonical_book(book)
+    if not canon:
+        raise HTTPException(404, f"unknown book {book!r}")
+    verses = get_verses(conn, canon, chapter)
+    if not verses:
+        raise HTTPException(404, "chapter not found")
+    return {
+        "ref": format_ref(canon, chapter, None, None),
+        "book": display_book(canon), "volume": BOOK_VOLUME.get(canon),
+        "chapter": chapter, "chapters": chapter_count(conn, canon),
+        "verses": [v.to_dict() for v in verses],
+    }
