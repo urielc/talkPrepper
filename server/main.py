@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import db as dbm
 from .config import WEB_DIST
 from .search import SearchEngine
-from .routers import talks, search, scriptures, lessons, settings, chat, admin
+from .routers import talks, search, scriptures, lessons, settings, chat, admin, digest
 
 
 @asynccontextmanager
@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (talks.router, search.router, scriptures.router, lessons.router,
+for r in (digest.router, talks.router, search.router, scriptures.router, lessons.router,
           settings.router, chat.router, admin.router):
     app.include_router(r, prefix="/api")
 

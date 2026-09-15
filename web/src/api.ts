@@ -138,6 +138,17 @@ export interface ChatSession {
   messages?: ChatMessage[]
 }
 
+export interface Digest {
+  talk_id: string
+  provider: string
+  model: string
+  created_at: string
+  essence: string
+  main_points: { point: string; paragraph: number | null }[]
+  key_quotes: { text: string; paragraph: number | null; why: string }[]
+  questions: { question: string; kind: 'opening' | 'discussion' | 'application'; note: string }[]
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -200,6 +211,10 @@ export const api = {
       `/scriptures/lookup/talks?ref=${encodeURIComponent(ref)}${exclude ? `&exclude=${encodeURIComponent(exclude)}` : ''}`,
     ),
   chapter: (book: string, chapter: number) => get<Lookup>(`/scriptures/${encodeURIComponent(book)}/${chapter}`),
+
+  digest: (id: string) => get<Digest | null>(`/talks/${id}/digest`),
+  generateDigest: (id: string) => post<Digest>(`/talks/${id}/digest`),
+  deleteDigest: (id: string) => del<{ ok: boolean }>(`/talks/${id}/digest`),
 
   currentTalk: () => get<{ talk_id: string | null; talk: TalkSummary | null }>('/current-talk'),
   setCurrentTalk: (talk_id: string | null) =>

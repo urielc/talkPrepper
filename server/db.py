@@ -147,6 +147,14 @@ CREATE TABLE IF NOT EXISTS pins (
 );
 CREATE INDEX IF NOT EXISTS pins_lesson ON pins(talk_id, ord);
 
+CREATE TABLE IF NOT EXISTS digests (
+    talk_id    TEXT PRIMARY KEY,
+    provider   TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    json       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id         INTEGER PRIMARY KEY,
     talk_id    TEXT NOT NULL,

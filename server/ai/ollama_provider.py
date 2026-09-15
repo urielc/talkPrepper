@@ -37,6 +37,26 @@ class OllamaProvider(Provider):
             raise ProviderError(f"Model {self.model!r} is not pulled. Available: {', '.join(names) or 'none'}")
         return {"provider": "ollama", "model": self.model}
 
+    def generate_json(self, system: str, user_message: str, schema: dict) -> dict:
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_message}],
+            "stream": False,
+            "format": schema,
+            "options": {"temperature": 0.3},
+        }
+        try:
+            r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=httpx.Timeout(600, connect=10))
+        except httpx.HTTPError as e:
+            raise ProviderError(f"Ollama request failed: {e}")
+        if r.status_code >= 400:
+            raise ProviderError(f"Ollama error {r.status_code}: {r.text[:300]}")
+        content = (r.json().get("message") or {}).get("content", "")
+        try:
+            return json.loads(content)
+        except ValueError:
+            raise ProviderError("The model returned malformed JSON for the digest.")
+
     def stream(self, system: str, history: list[dict], user_message: str,
                tools: list[ToolSpec], execute: ToolExecutor) -> Iterator[ChatEvent]:
         tool_defs = [{"type": "function", "function": {

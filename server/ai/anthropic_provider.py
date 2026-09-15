@@ -64,6 +64,43 @@ class AnthropicProvider(Provider):
             raise ProviderError(f"Could not reach the Anthropic API: {e}")
         return {"provider": "anthropic", "model": m.id, "display_name": getattr(m, "display_name", m.id)}
 
+    def generate_json(self, system: str, user_message: str, schema: dict) -> dict:
+        kwargs = dict(
+            model=self.model,
+            max_tokens=MAX_TOKENS,
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_message}],
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+            **self._thinking_kwargs(),
+        )
+        try:
+            if self._use_fallbacks:
+                try:
+                    resp = self.client.beta.messages.create(
+                        betas=[FALLBACK_BETA], extra_body={"fallbacks": "default"}, **kwargs)
+                except anthropic.BadRequestError as e:
+                    if "fallback" not in str(e).lower():
+                        raise
+                    self._use_fallbacks = False
+                    resp = self.client.messages.create(**kwargs)
+            else:
+                resp = self.client.messages.create(**kwargs)
+        except anthropic.AuthenticationError:
+            raise ProviderError("Anthropic rejected the API key. Check Settings → AI.")
+        except anthropic.RateLimitError:
+            raise ProviderError("Rate limited by the Anthropic API. Try again in a moment.")
+        except anthropic.APIStatusError as e:
+            raise ProviderError(f"Anthropic API error {e.status_code}: {e.message}")
+        except anthropic.APIConnectionError as e:
+            raise ProviderError(f"Could not reach the Anthropic API: {e}")
+        if resp.stop_reason == "refusal":
+            raise ProviderError("The model declined to generate this digest.")
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            return json.loads(text)
+        except ValueError:
+            raise ProviderError("The model returned malformed JSON for the digest.")
+
     def stream(self, system: str, history: list[dict], user_message: str,
                tools: list[ToolSpec], execute: ToolExecutor) -> Iterator[ChatEvent]:
         tool_defs = [{"name": t.name, "description": t.description, "input_schema": t.input_schema}

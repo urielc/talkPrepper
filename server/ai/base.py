@@ -50,3 +50,7 @@ class Provider:
     def ping(self) -> dict[str, Any]:
         """Cheap connectivity/authentication check. Returns info for the UI."""
         raise NotImplementedError
+
+    def generate_json(self, system: str, user_message: str, schema: dict) -> dict:
+        """One-shot structured generation: returns a dict matching ``schema``."""
+        raise NotImplementedError

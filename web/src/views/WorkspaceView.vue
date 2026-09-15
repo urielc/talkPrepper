@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api, type TalkDetail } from '../api'
 import { talkRoute } from '../router'
@@ -10,6 +10,7 @@ import AskAiButton from '../components/AskAiButton.vue'
 import NotesColumn from '../components/NotesColumn.vue'
 import ResearchColumn from '../components/ResearchColumn.vue'
 import TalkReader from '../components/TalkReader.vue'
+import DigestPane from '../components/DigestPane.vue'
 
 const props = defineProps<{ talkId: string }>()
 const lesson = useLessonStore()
@@ -39,6 +40,50 @@ function ask(text: string) {
   draft.value = `About this passage from the talk:\n\n“${text}”\n\n`
   ui.openAi()
 }
+function askRaw(text: string) {
+  draft.value = text
+  ui.openAi()
+}
+
+// Jump the reader to a paragraph (re-triggers even for the same index).
+const scrollTo = ref<number | null>(null)
+async function goto(idx: number) {
+  scrollTo.value = null
+  await nextTick()
+  scrollTo.value = idx
+}
+
+// Draggable horizontal split between the talk and its digest; ratio persisted.
+const readerFrac = ref(0.6)
+try {
+  const saved = Number(localStorage.getItem('lp.readerFrac'))
+  if (saved > 0.2 && saved < 0.9) readerFrac.value = saved
+} catch {
+  /* ignore */
+}
+const readerCol = ref<HTMLElement | null>(null)
+let dragging = false
+function startDrag(e: PointerEvent) {
+  dragging = true
+  ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  document.body.style.cursor = 'row-resize'
+}
+function onDrag(e: PointerEvent) {
+  if (!dragging || !readerCol.value) return
+  const r = readerCol.value.getBoundingClientRect()
+  readerFrac.value = Math.min(0.9, Math.max(0.2, (e.clientY - r.top) / r.height))
+}
+function endDrag() {
+  if (!dragging) return
+  dragging = false
+  document.body.style.cursor = ''
+  try {
+    localStorage.setItem('lp.readerFrac', String(readerFrac.value))
+  } catch {
+    /* ignore */
+  }
+}
+onBeforeUnmount(endDrag)
 </script>
 
 <template>
@@ -49,7 +94,8 @@ function ask(text: string) {
       <ResearchColumn :talk="talk" />
     </aside>
 
-    <section class="reader-col">
+    <section ref="readerCol" class="reader-col" :style="{ '--reader-frac': readerFrac }">
+      <div class="reader-pane">
       <header class="talk-head">
         <nav class="crumbs small">
           <RouterLink to="/">Talks</RouterLink> / <span class="muted">{{ talk.conference }}</span>
@@ -72,7 +118,15 @@ function ask(text: string) {
           <RouterLink v-if="talk.next" :to="talkRoute(talk.next.id)" class="muted">{{ talk.next.title }} ›</RouterLink>
         </div>
       </header>
-      <TalkReader :talk="talk" @ask="ask" />
+      <TalkReader :talk="talk" :scroll-to="scrollTo" @ask="ask" />
+      </div>
+
+      <div class="splitter" role="separator" aria-orientation="horizontal" aria-label="Resize talk and digest"
+           @pointerdown="startDrag" @pointermove="onDrag" @pointerup="endDrag" @pointercancel="endDrag"></div>
+
+      <div class="digest-pane">
+        <DigestPane :talk="talk" @goto="goto" @ask="askRaw" />
+      </div>
     </section>
 
     <aside class="notes-col">
@@ -105,14 +159,49 @@ function ask(text: string) {
   padding: 1rem 1.1rem 3rem;
 }
 .reader-col {
-  padding: 1.75rem 3rem 5rem;
+  display: grid;
+  grid-template-rows: minmax(8rem, calc(var(--reader-frac, 0.6) * 100%)) auto minmax(6rem, 1fr);
+  overflow: hidden;
+  padding: 0;
+}
+.reader-pane {
+  overflow: auto;
+  padding: 1.75rem 3rem 3rem;
+}
+.digest-pane {
+  overflow: auto;
+  padding: 0.75rem 3rem 3rem;
+  background: var(--paper);
+}
+.splitter {
+  height: 9px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-2);
+  cursor: row-resize;
+  touch-action: none;
+  position: relative;
+}
+.splitter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 44px;
+  height: 1px;
+  margin-left: -22px;
+  background: var(--rule-strong);
 }
 /* Centre the reading column inside whatever width the grid gives it */
-.reader-col > * {
+.reader-pane > *,
+.digest-pane > * {
   width: 100%;
-  max-width: var(--reader-width);
+  max-width: calc(var(--reader-width) * 1.35);
   margin-left: auto;
   margin-right: auto;
+}
+.reader-pane > * {
+  max-width: var(--reader-width);
 }
 .talk-head {
   margin-bottom: 1.75rem;
@@ -162,8 +251,10 @@ h1 {
     border-top: 1px solid var(--rule);
     max-height: 42vh;
   }
-  .reader-col {
-    padding: 1.5rem 2rem 4rem;
+  .reader-pane,
+  .digest-pane {
+    padding-left: 2rem;
+    padding-right: 2rem;
   }
 }
 
@@ -182,6 +273,18 @@ h1 {
     max-height: none;
     padding: 1.25rem 1.25rem 2rem;
     grid-column: auto;
+  }
+  .reader-col {
+    display: block;
+    padding: 0;
+  }
+  .reader-pane,
+  .digest-pane {
+    overflow: visible;
+    padding: 1.25rem 1.25rem 2rem;
+  }
+  .splitter {
+    display: none;
   }
   .reader-col {
     order: -1;
