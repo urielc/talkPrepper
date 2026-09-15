@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..settings import get_setting, set_settings
 from ..deps import get_conn, get_engine
 from ..search import SearchEngine, fts_query
 from ..scriptures import format_ref, display_book
@@ -49,6 +51,26 @@ def get_talk_or_404(conn: sqlite3.Connection, talk_id: str) -> sqlite3.Row:
     if not r:
         raise HTTPException(404, f"talk not found: {talk_id}")
     return r
+
+
+class CurrentTalkBody(BaseModel):
+    talk_id: str | None = None
+
+
+@router.get("/current-talk")
+def get_current_talk(conn=Depends(get_conn)):
+    """The talk the user is currently preparing, or null."""
+    tid = get_setting(conn, "current_talk_id")
+    talk = fetch_talks(conn, [tid]).get(tid) if tid else None
+    return {"talk_id": tid or None, "talk": talk}
+
+
+@router.put("/current-talk")
+def set_current_talk(body: CurrentTalkBody, conn=Depends(get_conn)):
+    if body.talk_id:
+        get_talk_or_404(conn, body.talk_id)
+    set_settings(conn, {"current_talk_id": body.talk_id or ""})
+    return get_current_talk(conn)
 
 
 @router.get("/conferences")

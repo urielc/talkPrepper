@@ -3,7 +3,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api, type Conference, type TalkSummary } from '../api'
 import { talkRoute } from '../router'
+import { useLessonStore } from '../stores/lesson'
 
+const lesson = useLessonStore()
 const conferences = ref<Conference[]>([])
 const conferenceId = ref('')
 const talks = ref<TalkSummary[]>([])
@@ -19,6 +21,7 @@ onMounted(async () => {
     conferences.value = await api.conferences()
     if (conferences.value.length) conferenceId.value = conferences.value[0].id
     recent.value = await api.lessons()
+    if (!lesson.currentLoaded) await lesson.loadCurrent()
   } catch (e: any) {
     error.value = e.message
   }
@@ -53,7 +56,17 @@ const current = computed(() => conferences.value.find((c) => c.id === conference
 <template>
   <div class="home">
     <section class="pick">
-      <h1>Which talk are you teaching?</h1>
+      <div v-if="lesson.current" class="current">
+        <div class="current-label small">Current lesson</div>
+        <RouterLink :to="talkRoute(lesson.current.id)" class="current-title">{{ lesson.current.title }}</RouterLink>
+        <div class="talk-meta">{{ lesson.current.speaker }}, {{ lesson.current.conference }}</div>
+        <div class="row current-actions">
+          <RouterLink :to="talkRoute(lesson.current.id)" class="btn-link">Continue preparing</RouterLink>
+          <button class="quiet small" @click="lesson.setCurrent(null)">Clear</button>
+        </div>
+      </div>
+
+      <h1>{{ lesson.current ? 'Or pick another talk' : 'Which talk are you teaching?' }}</h1>
       <p class="muted lede">
         Choose the assigned talk to open a workspace with the full text, related talks, every scripture it cites, search, an AI
         assistant, and your notes.
@@ -108,6 +121,44 @@ const current = computed(() => conferences.value.find((c) => c.id === conference
 </template>
 
 <style scoped>
+.current {
+  border-left: 3px solid var(--gold);
+  background: var(--paper-2);
+  padding: 0.9rem 1.1rem 1rem;
+  margin-bottom: 2rem;
+}
+.current-label {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+.current-title {
+  display: block;
+  font-family: var(--serif);
+  font-size: var(--fs-4);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+  margin: 0.15rem 0 0.2rem;
+}
+.current-title:hover {
+  color: var(--blue-2);
+  text-decoration: none;
+}
+.current-actions {
+  margin-top: 0.75rem;
+}
+.btn-link {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--blue);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-link:hover {
+  text-decoration: none;
+  filter: brightness(1.1);
+}
 .home {
   max-width: 1100px;
   margin: 0 auto;

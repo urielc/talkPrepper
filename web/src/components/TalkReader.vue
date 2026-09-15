@@ -37,15 +37,13 @@ function segments(p: Paragraph): Segment[] {
   return out
 }
 
-const body = computed(() => props.talk.paragraphs.filter((p) => !p.is_note))
+// Body paragraphs, minus a "By Elder X" byline that may sit after an opening epigraph.
+const body = computed(() => {
+  const paras = props.talk.paragraphs.filter((p) => !p.is_note)
+  return paras.filter((p, i) => !(i < 3 && p.text.length < 90 && /^(By|Presented by)\s/.test(p.text)))
+})
 const notes = computed(() => props.talk.paragraphs.filter((p) => p.is_note))
 
-// Which paragraph is the byline? Skip rendering "By Elder X" as body text when it duplicates the speaker.
-const bodyStart = computed(() => {
-  const first = body.value[0]
-  if (first && /^(By|Presented by)\s/.test(first.text) && first.text.length < 90) return 1
-  return 0
-})
 
 // Short opening lines without terminal punctuation are the speaker's role or a kicker, not prose.
 function isKicker(p: Paragraph, i: number): boolean {
@@ -129,7 +127,7 @@ watch(
     </div>
 
     <div class="body">
-      <p v-for="(p, i) in body.slice(bodyStart)" :key="p.id" :data-pid="p.id" :data-idx="p.idx" :class="{ kicker: isKicker(p, i) }">
+      <p v-for="(p, i) in body" :key="p.id" :data-pid="p.id" :data-idx="p.idx" :class="{ kicker: isKicker(p, i) }">
         <template v-for="(s, i) in segments(p)" :key="i">
           <button
             v-if="s.ref"

@@ -201,6 +201,10 @@ export const api = {
     ),
   chapter: (book: string, chapter: number) => get<Lookup>(`/scriptures/${encodeURIComponent(book)}/${chapter}`),
 
+  currentTalk: () => get<{ talk_id: string | null; talk: TalkSummary | null }>('/current-talk'),
+  setCurrentTalk: (talk_id: string | null) =>
+    put<{ talk_id: string | null; talk: TalkSummary | null }>('/current-talk', { talk_id }),
+
   lessons: () =>
     get<{ talk: TalkSummary; updated_at: string; notes_len: number; pin_count: number; chat_count: number }[]>('/lessons'),
   lesson: (talkId: string) => get<Lesson>(`/lessons/${talkId}`),

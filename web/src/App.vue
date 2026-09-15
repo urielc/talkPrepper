@@ -3,13 +3,17 @@ import { onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { api } from './api'
 import { useUiStore } from './stores/ui'
+import { useLessonStore } from './stores/lesson'
+import { talkRoute } from './router'
 import TalkDrawer from './components/TalkDrawer.vue'
 import ScripturePanel from './components/ScripturePanel.vue'
 
 const ui = useUiStore()
+const lesson = useLessonStore()
 const indexReady = ref<boolean | null>(null)
 
 onMounted(async () => {
+  lesson.loadCurrent().catch(() => {})
   try {
     const h = await api.health()
     indexReady.value = h.index_ready
@@ -33,6 +37,9 @@ function cycleTheme() {
       </RouterLink>
       <nav class="row">
         <RouterLink to="/" class="navlink">Talks</RouterLink>
+        <RouterLink v-if="lesson.current" :to="talkRoute(lesson.current.id)" class="navlink current" :title="lesson.current.title">
+          Current lesson
+        </RouterLink>
         <RouterLink to="/settings" class="navlink">Settings</RouterLink>
         <button class="quiet small" @click="cycleTheme" :title="`Theme: ${ui.theme}`">
           {{ ui.theme === 'system' ? 'Auto' : ui.theme === 'light' ? 'Light' : 'Dark' }}
@@ -92,6 +99,9 @@ function cycleTheme() {
   color: var(--ink-2);
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius);
+}
+.navlink.current {
+  color: var(--gold-2);
 }
 .navlink.router-link-active {
   color: var(--blue-2);

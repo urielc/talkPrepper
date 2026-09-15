@@ -40,6 +40,7 @@ SETTINGS_DEFAULTS = {
     "smtp_password": "",
     "smtp_tls": "starttls",  # starttls | ssl | none
     "embedding_model": DEFAULT_EMBEDDING_MODEL,
+    "current_talk_id": "",         # the lesson being prepared right now
 }
 SECRET_SETTINGS = {"anthropic_api_key", "smtp_password", "postmark_server_token"}
 POSTMARK_API_URL = "https://api.postmarkapp.com/email"

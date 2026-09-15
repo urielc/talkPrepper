@@ -30,8 +30,10 @@
   --fs-4: 1.5625rem;
   --fs-5: 2rem;
 
-  --reader-width: 68ch;
-  --panel-width: 480px;
+  --reader-width: 46rem;
+  --research-w: 380px;
+  --notes-w: 400px;
+  --ai-w: 480px;
   --header-h: 56px;
   --radius: 4px;
   --shadow-pop: 0 10px 30px rgba(20, 30, 45, 0.18);

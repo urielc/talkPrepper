@@ -38,7 +38,7 @@ async function saveEdit(p: Pin) {
 
 function openSource(p: Pin) {
   if (p.kind === 'scripture' && p.scripture_ref) ui.openScripture(p.scripture_ref)
-  else if (p.ref_talk_id) ui.openTalk(p.ref_talk_id, p.ref_paragraph_id != null ? undefined : null)
+  else if (p.ref_talk_id) ui.openTalk(p.ref_talk_id)
 }
 
 function kindLabel(p: Pin) {
@@ -47,29 +47,29 @@ function kindLabel(p: Pin) {
 </script>
 
 <template>
-  <div class="notes-tab">
-    <section>
-      <div class="row between">
-        <h3>Notes</h3>
+  <div class="notes-col">
+    <section class="notes">
+      <div class="section-head static">
+        <span class="title">Notes</span>
         <span class="faint small">{{ status }}</span>
       </div>
       <textarea
         :value="lesson.notes"
-        rows="10"
         placeholder="Main message, discussion questions, an outline… Markdown works here."
         @input="lesson.setNotes(($event.target as HTMLTextAreaElement).value)"
       ></textarea>
     </section>
 
-    <section>
-      <div class="row between">
-        <h3>Pinned references</h3>
-        <div class="row">
+    <section class="pins-sec">
+      <div class="section-head static">
+        <span class="title">Pins</span>
+        <span v-if="lesson.pins.length" class="count">{{ lesson.pins.length }}</span>
+        <span class="row">
           <button class="small" @click="print">Print</button>
           <button class="small" @click="emailOpen = true">Email…</button>
-        </div>
+        </span>
       </div>
-      <p v-if="!lesson.pins.length" class="empty">
+      <p v-if="!lesson.pins.length" class="empty small">
         Nothing pinned yet. Pin a talk, a passage, or a selected quote from the reader, search results, or an AI answer.
       </p>
       <ul v-else class="pins">
@@ -107,12 +107,37 @@ function kindLabel(p: Pin) {
 </template>
 
 <style scoped>
-.notes-tab section + section {
-  margin-top: 1.5rem;
+.notes-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
-h3 {
-  font-size: var(--fs-2);
-  margin-bottom: 0.4rem;
+.section-head.static {
+  cursor: default;
+  padding-top: 0;
+}
+.section-head.static:hover {
+  color: var(--ink);
+}
+.notes {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-bottom: 1.25rem;
+}
+.notes textarea {
+  margin-top: 0.6rem;
+  min-height: 12rem;
+  height: 34vh;
+  resize: vertical;
+  font-family: var(--sans);
+  line-height: 1.5;
+}
+.pins-sec {
+  flex: 1;
+  min-height: 0;
 }
 .pins {
   list-style: none;
@@ -166,5 +191,8 @@ h3 {
   padding-left: 0;
   text-align: left;
   white-space: normal;
+}
+.empty.small {
+  padding: 1rem 0;
 }
 </style>

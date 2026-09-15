@@ -4,6 +4,7 @@ import { api, type Hit } from '../api'
 import TalkListItem from './TalkListItem.vue'
 
 const props = defineProps<{ talkId: string }>()
+const emit = defineEmits<{ (e: 'count', n: number): void }>()
 const results = ref<Hit[]>([])
 const terms = ref<string[]>([])
 const semantic = ref(true)
@@ -23,6 +24,7 @@ watch(
       results.value = r.results
       terms.value = r.terms
       semantic.value = r.semantic
+      emit('count', r.results.length)
     } catch (e: any) {
       error.value = e.message
     } finally {

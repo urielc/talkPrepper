@@ -38,9 +38,7 @@ function toggle(r: string) {
   <div>
     <p v-if="!talk.scriptures.length" class="empty">No scripture references were detected in this talk.</p>
     <template v-else>
-      <p class="muted small">
-        {{ talk.scriptures.length }} passages cited. Click a reference to read it; expand to see other talks that cite it.
-      </p>
+      <p class="muted small">Click a reference to read it; expand to see other talks that cite it.</p>
       <ul class="result-list">
         <li v-for="s in shared" :key="s.ref">
           <div class="row between">

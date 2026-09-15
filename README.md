@@ -36,6 +36,14 @@ Single process (serves the built web app and the API on :8765):
 make serve          # runs `npm run build` then `python -m server.cli serve`
 ```
 
+To use it from a phone or another computer on the same network:
+
+```bash
+make serve-lan      # binds 0.0.0.0:8765; open http://<this machine's IP>:8765 on the other device
+```
+
+The firewall must allow TCP 8765 (Fedora's default workstation zone already allows 1025–65535; otherwise `sudo firewall-cmd --add-port=8765/tcp --permanent && sudo firewall-cmd --reload`). There is no login: anyone on the network who can reach the port can read talks, change settings (including the AI key and email token) and send email. Keep it on trusted networks, and add authentication before exposing it beyond your LAN.
+
 Open Settings in the app to enter an Anthropic API key (or pick an Ollama model) and, optionally, email details for sending your notes: a Postmark server token plus a verified sender address (default), or any SMTP server. Settings live in `data/app.db`, not in environment files.
 
 The app uses port 8765 for the API because 8000 was taken on the development machine; change it in `dev.sh`, `web/vite.config.ts` and `server/cli.py` if you prefer another.

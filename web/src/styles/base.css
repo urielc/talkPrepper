@@ -167,6 +167,43 @@ mark {
   background: var(--gold-soft);
 }
 
+/* Section headers used by the workspace columns */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0 0.45rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--ink);
+}
+.section-head:hover {
+  background: transparent;
+  color: var(--blue-2);
+}
+.section-head .title {
+  font-family: var(--serif);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  flex: 1;
+}
+.section-head .count {
+  color: var(--gold-2);
+  font-size: var(--fs-0);
+}
+.section-head .chev {
+  color: var(--ink-3);
+  font-size: var(--fs-0);
+  transition: transform 0.15s ease;
+}
+.section-head[aria-expanded="false"] .chev {
+  transform: rotate(-90deg);
+}
+
 /* Lists of results: hairlines, no cards */
 .result-list {
   list-style: none;

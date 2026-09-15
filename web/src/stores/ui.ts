@@ -52,6 +52,18 @@ export const useUiStore = defineStore('ui', () => {
     scriptureRef.value = null
   }
 
+  // Ask AI sidebar
+  const aiOpen = ref(false)
+  function openAi() {
+    aiOpen.value = true
+  }
+  function closeAi() {
+    aiOpen.value = false
+  }
+  function toggleAi() {
+    aiOpen.value = !aiOpen.value
+  }
+
   const toasts = ref<Toast[]>([])
   function toast(text: string, kind: Toast['kind'] = 'info', ms = 3500) {
     const id = ++toastSeq
@@ -71,6 +83,10 @@ export const useUiStore = defineStore('ui', () => {
     scriptureRef,
     openScripture,
     closeScripture,
+    aiOpen,
+    openAi,
+    closeAi,
+    toggleAi,
     toasts,
     toast,
   }

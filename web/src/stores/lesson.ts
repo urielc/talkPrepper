@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type Lesson, type Pin } from '../api'
+import { api, type Lesson, type Pin, type TalkSummary } from '../api'
 import { useUiStore } from './ui'
 
 export const useLessonStore = defineStore('lesson', () => {
@@ -10,6 +10,21 @@ export const useLessonStore = defineStore('lesson', () => {
   const loading = ref(false)
   const saving = ref(false)
   const savedAt = ref<string | null>(null)
+
+  // The lesson being prepared right now (one per app, stored server-side)
+  const current = ref<TalkSummary | null>(null)
+  const currentLoaded = ref(false)
+  async function loadCurrent() {
+    try {
+      current.value = (await api.currentTalk()).talk
+    } finally {
+      currentLoaded.value = true
+    }
+  }
+  async function setCurrent(id: string | null) {
+    current.value = (await api.setCurrentTalk(id)).talk
+    ui().toast(id ? 'Marked as your current lesson' : 'Current lesson cleared', 'ok', 1800)
+  }
 
   async function load(id: string) {
     if (talkId.value === id && !loading.value) return
@@ -77,5 +92,5 @@ export const useLessonStore = defineStore('lesson', () => {
     pins.value = await api.reorderPins(talkId.value, ids)
   }
 
-  return { talkId, notes, pins, loading, saving, savedAt, load, setNotes, saveNotes, addPin, hasPin, patchPin, removePin, reorder }
+  return { talkId, notes, pins, loading, saving, savedAt, current, currentLoaded, loadCurrent, setCurrent, load, setNotes, saveNotes, addPin, hasPin, patchPin, removePin, reorder }
 })

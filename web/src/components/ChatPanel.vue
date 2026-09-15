@@ -120,7 +120,7 @@ function describeCall(b: ChatBlock): string {
         <option v-for="s in sessionOptions" :key="s.id" :value="s.id">{{ s.title || 'Untitled' }} ({{ s.message_count }})</option>
       </select>
       <button v-if="chat.sessionId" class="quiet small" @click="chat.deleteSession(chat.sessionId!)">Delete</button>
-      <span class="faint small">{{ chat.provider ? `${chat.provider.provider} · ${chat.provider.model}` : providerLabel }}</span>
+      <span v-if="!chat.provider" class="faint small">{{ providerLabel }}</span>
     </div>
 
     <div ref="list" class="messages" @click="onCiteClick">
