@@ -206,7 +206,20 @@ h1{font-size:1.7rem;margin:0 0 .25rem;color:#0b2e59}h2{font-size:1.15rem;margin:
 .quote .why,.q .qnote{font-family:system-ui,sans-serif;font-size:.88rem;color:#5b6570}
 .qkind{font:600 .78rem system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a6d1a;margin:1rem 0 .35rem}
 .q{margin:0 0 .8rem}.q .qtext{font-size:1.02rem;margin:0 0 .15rem}
-a{color:#0b2e59}@media print{body{margin:0;max-width:none}.pin,.quote,.q{break-inside:avoid}}
+a{color:#0b2e59}
+@page{size:letter;margin:0.45in 0.55in}
+@media print{
+  body{margin:0;max-width:none;font-size:10pt;line-height:1.32;color:#000}
+  h1{font-size:15pt;margin:0 0 .1rem}h2{font-size:11pt;margin:.7rem 0 .35rem;padding-bottom:.1rem;break-after:avoid}
+  .meta{font-size:8.5pt;margin-bottom:.6rem}.notes{font-size:9.5pt}.notes p,.notes li{margin:.15rem 0}
+  .essence{font-size:10pt;line-height:1.35}.points{padding-left:1.1rem}.points li{margin-bottom:.15rem}
+  .quote{margin:0 0 .4rem;padding:.3rem .6rem;background:none;border-left-width:2px}.quote blockquote{margin:0 0 .1rem}
+  .quote .why,.q .qnote,.pin .src,.pin .note{font-size:8.5pt}
+  .qkind{font-size:7.5pt;margin:.5rem 0 .2rem}.q{margin:0 0 .4rem}.q .qtext{font-size:10pt;margin:0}
+  .pin{margin:0 0 .45rem;padding:.3rem .6rem;background:none;border-left-width:2px}.pin .kind{font-size:6.5pt}
+  .pin blockquote{margin:.1rem 0}.pin .note{margin-top:.15rem}.pin .src{margin-top:.15rem}
+  .pin,.quote,.q{break-inside:avoid}a{text-decoration:none;color:inherit}
+}
 """
 
 ALL_SECTIONS = ["notes", "essence", "points", "quotes", "questions", "pins"]
