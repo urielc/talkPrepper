@@ -1,22 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { api, type Pin } from '../api'
+import type { Pin } from '../api'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
 import EmailDialog from './EmailDialog.vue'
+import PrintDialog from './PrintDialog.vue'
 
 const props = defineProps<{ talkId: string }>()
 const lesson = useLessonStore()
 const ui = useUiStore()
 const emailOpen = ref(false)
+const printOpen = ref(false)
 const editing = ref<number | null>(null)
 const editNote = ref('')
 
 const status = computed(() => (lesson.saving ? 'Saving…' : lesson.savedAt ? 'Saved' : ''))
 
-function print() {
-  window.open(api.exportUrl(props.talkId), '_blank', 'noopener')
-}
 
 function move(p: Pin, dir: -1 | 1) {
   const ids = lesson.pins.map((x) => x.id)
@@ -65,7 +64,7 @@ function kindLabel(p: Pin) {
         <span class="title">Pins</span>
         <span v-if="lesson.pins.length" class="count">{{ lesson.pins.length }}</span>
         <span class="row">
-          <button class="small" @click="print">Print</button>
+          <button class="small" @click="printOpen = true">Print…</button>
           <button class="small" @click="emailOpen = true">Email…</button>
         </span>
       </div>
@@ -103,6 +102,7 @@ function kindLabel(p: Pin) {
     </section>
 
     <EmailDialog v-if="emailOpen" :talk-id="talkId" @close="emailOpen = false" />
+    <PrintDialog v-if="printOpen" :talk-id="talkId" @close="printOpen = false" />
   </div>
 </template>
 

@@ -82,8 +82,11 @@ def list_lessons(conn=Depends(get_conn)):
 
 
 @router.get("/lessons/{talk_id:path}/export.html", response_class=HTMLResponse)
-def export_html(talk_id: str, conn=Depends(get_conn)):
-    return HTMLResponse(render_export(conn, talk_id))
+def export_html(talk_id: str, sections: str | None = None, conn=Depends(get_conn)):
+    """Printable lesson sheet. ``sections`` is a comma list drawn from
+    notes, essence, points, quotes, questions, pins; omitted means everything."""
+    chosen = [x.strip() for x in sections.split(",") if x.strip()] if sections else None
+    return HTMLResponse(render_export(conn, talk_id, chosen))
 
 
 @router.post("/lessons/{talk_id:path}/email")
@@ -198,13 +201,58 @@ h1{font-size:1.7rem;margin:0 0 .25rem;color:#0b2e59}h2{font-size:1.15rem;margin:
 .pin .kind{font:600 .72rem system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#8a6d1a}
 .pin .src{font-family:system-ui,sans-serif;font-size:.85rem;color:#5b6570;margin-top:.35rem}
 .pin blockquote{margin:.4rem 0;font-style:italic}.pin .note{font-family:system-ui,sans-serif;font-size:.9rem;margin-top:.4rem}
-a{color:#0b2e59}@media print{body{margin:0;max-width:none}.pin{break-inside:avoid}}
+.essence{font-size:1.08rem;line-height:1.6}.points{padding-left:1.4rem}.points li{margin-bottom:.45rem}
+.quote{margin:0 0 1rem;padding:.6rem 1rem;border-left:3px solid #c9a227;background:#faf8f2}.quote blockquote{margin:0 0 .3rem;font-style:italic}
+.quote .why,.q .qnote{font-family:system-ui,sans-serif;font-size:.88rem;color:#5b6570}
+.qkind{font:600 .78rem system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a6d1a;margin:1rem 0 .35rem}
+.q{margin:0 0 .8rem}.q .qtext{font-size:1.02rem;margin:0 0 .15rem}
+a{color:#0b2e59}@media print{body{margin:0;max-width:none}.pin,.quote,.q{break-inside:avoid}}
 """
 
+ALL_SECTIONS = ["notes", "essence", "points", "quotes", "questions", "pins"]
+SECTION_TITLES = {"essence": "Essence", "points": "Main points", "quotes": "Worth reading aloud",
+                  "questions": "Questions for the quorum"}
+KIND_LABEL = {"opening": "Opening", "discussion": "Discussion", "application": "Application"}
 
-def render_export(conn: sqlite3.Connection, talk_id: str) -> str:
+
+def render_digest_sections(digest: dict | None, chosen: list[str]) -> str:
+    esc = html.escape
+    wanted = [k for k in ("essence", "points", "quotes", "questions") if k in chosen]
+    if not wanted:
+        return ""
+    if not digest:
+        return "<h2>Digest</h2><p><em>No digest has been generated for this talk yet.</em></p>"
+    out = []
+    if "essence" in wanted:
+        out.append(f"<h2>Essence</h2><p class='essence'>{esc(digest.get('essence', ''))}</p>")
+    if "points" in wanted:
+        items = "".join(f"<li>{esc(m.get('point', ''))}</li>" for m in digest.get("main_points", []))
+        out.append(f"<h2>Main points</h2><ol class='points'>{items}</ol>")
+    if "quotes" in wanted:
+        qs = "".join(
+            f"<div class='quote'><blockquote>“{esc(q.get('text', ''))}”</blockquote>"
+            f"<div class='why'>{esc(q.get('why', ''))}</div></div>"
+            for q in digest.get("key_quotes", []))
+        out.append(f"<h2>Worth reading aloud</h2>{qs}")
+    if "questions" in wanted:
+        blocks = []
+        for kind in ("opening", "discussion", "application"):
+            qs = [q for q in digest.get("questions", []) if q.get("kind", "discussion") == kind]
+            if not qs:
+                continue
+            blocks.append(f"<div class='qkind'>{KIND_LABEL[kind]}</div>" + "".join(
+                f"<div class='q'><p class='qtext'>{esc(q.get('question', ''))}</p>"
+                f"<div class='qnote'>{esc(q.get('note', ''))}</div></div>" for q in qs))
+        out.append("<h2>Questions for the quorum</h2>" + "".join(blocks))
+    return "".join(out)
+
+
+def render_export(conn: sqlite3.Connection, talk_id: str, sections: list[str] | None = None) -> str:
+    from ..ai.digest import load_digest
+    chosen = [x for x in (sections or ALL_SECTIONS) if x in ALL_SECTIONS] or ALL_SECTIONS
     talk = talk_row_to_dict(get_talk_or_404(conn, talk_id))
     lesson = get_lesson(talk_id, conn)
+    digest_html = render_digest_sections(load_digest(conn, talk_id), chosen)
     esc = html.escape
     notes_html = markdown.markdown(lesson["notes_md"] or "", extensions=["extra", "sane_lists"]) \
         if lesson["notes_md"] else "<p><em>No notes yet.</em></p>"
@@ -232,6 +280,7 @@ def render_export(conn: sqlite3.Connection, talk_id: str) -> str:
 <style>{EXPORT_CSS}</style></head><body>
 <h1>{esc(talk['title'])}</h1>
 <div class="meta">{esc(talk['speaker'])} · {esc(talk['conference'] or '')} · <a href="{esc(talk['url'])}">Read the talk</a></div>
-<h2>Notes</h2><div class="notes">{notes_html}</div>
-<h2>Pinned references ({len(pins_html)})</h2>{''.join(pins_html) or '<p><em>Nothing pinned yet.</em></p>'}
+{f'<h2>Notes</h2><div class="notes">{notes_html}</div>' if 'notes' in chosen else ''}
+{digest_html}
+{f"<h2>Pinned references ({len(pins_html)})</h2>{''.join(pins_html) or '<p><em>Nothing pinned yet.</em></p>'}" if 'pins' in chosen else ''}
 </body></html>"""

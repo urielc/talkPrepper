@@ -233,7 +233,8 @@ export const api = {
   reorderPins: (talkId: string, ids: number[]) => post<Pin[]>(`/lessons/${talkId}/pins/reorder`, { ids }),
   emailLesson: (talkId: string, to: string[], subject?: string) =>
     post<{ ok: boolean; to: string[]; subject: string }>(`/lessons/${talkId}/email`, { to, subject }),
-  exportUrl: (talkId: string) => `/api/lessons/${talkId}/export.html`,
+  exportUrl: (talkId: string, sections?: string[]) =>
+    `/api/lessons/${talkId}/export.html${sections?.length ? `?sections=${sections.join(',')}` : ''}`,
 
   settings: () => get<Record<string, string | boolean>>('/settings'),
   saveSettings: (values: Record<string, string>) => put<Record<string, string | boolean>>('/settings', { values }),
