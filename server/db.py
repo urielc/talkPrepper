@@ -37,11 +37,13 @@ CREATE TABLE IF NOT EXISTS talks (
 CREATE INDEX IF NOT EXISTS talks_conf ON talks(conference_id, ord);
 
 CREATE TABLE IF NOT EXISTS paragraphs (
-    id       INTEGER PRIMARY KEY,
-    talk_id  TEXT NOT NULL REFERENCES talks(id),
-    idx      INTEGER NOT NULL,
-    text     TEXT NOT NULL,
-    is_note  INTEGER NOT NULL DEFAULT 0
+    id        INTEGER PRIMARY KEY,
+    talk_id   TEXT NOT NULL REFERENCES talks(id),
+    idx       INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    is_note   INTEGER NOT NULL DEFAULT 0,
+    marker    INTEGER,                 -- endnote number when is_note, else NULL
+    note_refs TEXT                     -- JSON [{"n": 13, "pos": 185}, ...] for body paragraphs
 );
 CREATE INDEX IF NOT EXISTS paragraphs_talk ON paragraphs(talk_id, idx);
 

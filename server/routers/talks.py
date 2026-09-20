@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from pydantic import BaseModel
@@ -218,7 +219,8 @@ def talk_detail(talk_id: str, conn=Depends(get_conn)):
     r = get_talk_or_404(conn, talk_id)
     talk = talk_row_to_dict(r)
     paras = conn.execute(
-        "SELECT id, idx, text, is_note FROM paragraphs WHERE talk_id=? ORDER BY idx", (talk_id,)).fetchall()
+        "SELECT id, idx, text, is_note, marker, note_refs FROM paragraphs WHERE talk_id=? ORDER BY idx",
+        (talk_id,)).fetchall()
     refs_by_para: dict[int, list[dict]] = {}
     for s in conn.execute(
             "SELECT paragraph_id, book, chapter, verse_start, verse_end, raw, char_start, char_end "
@@ -231,6 +233,8 @@ def talk_detail(talk_id: str, conn=Depends(get_conn)):
         })
     talk["paragraphs"] = [
         {"id": p["id"], "idx": p["idx"], "text": p["text"], "is_note": bool(p["is_note"]),
+         "marker": p["marker"],
+         "note_refs": json.loads(p["note_refs"]) if p["note_refs"] else [],
          "refs": refs_by_para.get(p["id"], [])}
         for p in paras
     ]

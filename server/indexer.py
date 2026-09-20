@@ -269,12 +269,21 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
             speaker = (t.get("speaker") or "").strip() or speaker_from_paragraphs(paragraphs)
             speaker = speaker.replace("\xa0", " ")
             title = (t.get("title") or "").strip().replace("\xa0", " ")
-            flags = mark_notes(paragraphs)
-            wc = sum(len(p.split()) for p, fl in zip(paragraphs, flags) if not fl)
+            if "notes" in t:
+                # New scraper output: body and endnotes are already separated.
+                refs = t.get("note_refs") or []
+                body = [(p, False, None, json.dumps(refs[i]) if i < len(refs) and refs[i] else None)
+                        for i, p in enumerate(paragraphs)]
+                notes = [(n["text"], True, n["n"], None) for n in t["notes"] if n.get("text")]
+                items = body + notes
+            else:
+                flags = mark_notes(paragraphs)
+                items = [(p, fl, None, None) for p, fl in zip(paragraphs, flags)]
+            wc = sum(len(p.split()) for p, fl, _m, _r in items if not fl)
             talk_rows.append((tid, cid, speaker, title, t["url"], wc, ord_))
             plist = []
-            for idx, (p, fl) in enumerate(zip(paragraphs, flags)):
-                para_rows.append((tid, idx, p, int(fl)))
+            for idx, (p, fl, marker, note_refs) in enumerate(items):
+                para_rows.append((tid, idx, p, int(fl), marker, note_refs))
                 plist.append((idx, p, fl))
             talk_paragraphs[tid] = plist
         report("talks", ci + 1, len(conf_items))
@@ -285,7 +294,7 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         conn.executemany(
             "INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES(?,?,?,?,?,?,?)",
             talk_rows)
-        conn.executemany("INSERT INTO paragraphs(talk_id, idx, text, is_note) VALUES(?,?,?,?)", para_rows)
+        conn.executemany("INSERT INTO paragraphs(talk_id, idx, text, is_note, marker, note_refs) VALUES(?,?,?,?,?,?)", para_rows)
         conn.executemany("INSERT INTO talks_fts(id, title, speaker) VALUES(?,?,?)",
                          [(r[0], r[3], r[2]) for r in talk_rows])
         conn.execute("INSERT INTO paragraphs_fts(paragraphs_fts) VALUES('rebuild')")

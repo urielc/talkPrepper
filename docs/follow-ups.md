@@ -14,6 +14,20 @@ not survive a reboot; a systemd user unit was offered but not built.
 
 **No git remote** is configured; nothing has ever been pushed.
 
+## Endnotes are now scraped separately (partial data until the re-scrape lands)
+
+Fixed 2026-09-20: `scrape_conference_talks.py` now pulls `<footer class="notes">` into a `notes` list per talk
+(`{n, text}`) and records footnote-marker positions per body paragraph (`note_refs`); the indexer stores
+`marker` / `note_refs` on `paragraphs` and only falls back to the `mark_notes` heuristic for talks scraped
+with the old extractor; the reader renders clickable superscript markers that jump to the numbered note.
+`--refresh YYYY/MM` re-scrapes chosen conferences in place.
+
+**Only April 2026 has been refreshed so far.** A full re-scrape with the new extractor was started on
+2026-09-20 writing `general_conference_talks.new.json` (log in the session scratchpad, ~2.5 h at 1 req/s).
+When it finishes: verify talk count (4,267) and that every talk has a `notes` key, move it to
+`data/general_conference_talks.json`, run `python -m server.cli index`, restart the server. Until then, older
+talks still show heuristically-detected notes without markers.
+
 ## Pins and digest questions
 
 Fixed 2026-09-20: pinning a digest question now carries its teacher note into the pin's `note` field

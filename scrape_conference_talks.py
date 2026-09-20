@@ -114,59 +114,102 @@ class ConferenceTalkScraper:
         # Remove duplicates
         return list(set(talk_urls))
     
+    NOTE_OPEN, NOTE_CLOSE = "\ue000", "\ue001"   # private-use sentinels for footnote markers
+
+    def paragraph_text(self, p):
+        """Text of a paragraph with whitespace collapsed, plus the footnote markers
+        that occur in it as (note number, character offset) pairs.
+
+        The site renders a footnote marker as <a class="note-ref"><sup data-value="N"/></a>
+        with no text, so we drop a sentinel in its place, normalise whitespace, then
+        pull the sentinels back out and remember where they were."""
+        for a in p.find_all("a", class_="note-ref"):
+            sup = a.find("sup")
+            n = (sup.get("data-value") if sup else None) or re.sub(r"\D", "", a.get("href", ""))
+            a.replace_with(f"{self.NOTE_OPEN}{n}{self.NOTE_CLOSE}" if n else "")
+        text = " ".join(p.get_text().split())
+        refs, out, i = [], [], 0
+        while True:
+            j = text.find(self.NOTE_OPEN, i)
+            if j < 0:
+                out.append(text[i:])
+                break
+            k = text.find(self.NOTE_CLOSE, j)
+            out.append(text[i:j])
+            clean_pos = sum(len(x) for x in out)
+            try:
+                refs.append({"n": int(text[j + 1:k]), "pos": clean_pos})
+            except ValueError:
+                pass
+            i = k + 1
+        clean = "".join(out)
+        # a marker glued to a preceding space leaves a double space; tidy without moving offsets much
+        return clean.strip(), refs
+
+    def extract_notes(self, content_div):
+        """Pull the endnotes out of <footer class="notes"> and remove the footer from the tree."""
+        footer = content_div.find("footer", class_="notes")
+        if not footer:
+            return []
+        notes = []
+        for li in footer.find_all("li", id=re.compile(r"^note\d+$")):
+            marker = (li.get("data-marker") or li["id"][4:]).rstrip(".")
+            try:
+                n = int(marker)
+            except ValueError:
+                continue
+            paras = [" ".join(q.get_text().split()) for q in li.find_all("p")] or [" ".join(li.get_text().split())]
+            text = "\n".join(x for x in paras if x)
+            if text:
+                notes.append({"n": n, "text": text})
+        footer.decompose()
+        return notes
+
     def extract_talk_content(self, html):
-        """Extract text content from a talk page."""
+        """Extract text content from a talk page.
+
+        Returns speaker, title, body paragraphs (with footnote-marker positions)
+        and the endnotes as a separate list."""
         soup = BeautifulSoup(html, 'html.parser')
-        
-        # Find the main content area - use 'body' class div
+
         content_div = soup.find('div', class_='body')
         if not content_div:
-            # Fallback: try to find other content divs
             content_div = soup.find('div', class_=re.compile('body-block|content'))
-        
-        if content_div:
-            # Extract text, preserving paragraphs
-            paragraphs = []
-            for p in content_div.find_all('p'):
-                # get_text(strip=True) would join adjacent text nodes with no
-                # separator ("See<a>Matthew 7:12</a>" -> "SeeMatthew 7:12"), so
-                # take the raw text and collapse whitespace runs instead.
-                text = ' '.join(p.get_text().split())
-                # Skip empty paragraphs or very short ones (likely metadata)
-                if text and len(text) > 5:
-                    paragraphs.append(text)
-            
-            # Also try to find speaker and title from metadata
-            speaker = None
-            title = None
-            
-            # Try to find speaker - look for the first paragraph that starts with "By"
-            for p in content_div.find_all('p', limit=5):
-                text = ' '.join(p.get_text().split())
-                if text.startswith('By '):
-                    speaker = text.replace('By ', '').strip()
-                    break
-            
-            # Try to find title from h1 or meta
-            title_elem = soup.find('h1')
-            if title_elem:
-                title = title_elem.get_text(strip=True)
-            
-            # If we didn't find speaker from content, try meta tags
-            if not speaker:
-                speaker_elem = soup.find('meta', {'property': 'article:author'})
-                if speaker_elem:
-                    speaker = speaker_elem.get('content')
-            
-            return {
-                'speaker': speaker or '',
-                'title': title or '',
-                'content': '\n\n'.join(paragraphs),
-                'paragraphs': paragraphs
-            }
-        
-        return None
-    
+        if not content_div:
+            return None
+
+        notes = self.extract_notes(content_div)
+
+        paragraphs, note_refs = [], []
+        for p in content_div.find_all('p'):
+            text, refs = self.paragraph_text(p)
+            # Skip empty paragraphs or very short ones (likely metadata)
+            if text and len(text) > 5:
+                paragraphs.append(text)
+                note_refs.append(refs)
+
+        speaker = None
+        for text in paragraphs[:5]:
+            if text.startswith('By '):
+                speaker = text.replace('By ', '').strip()
+                break
+        if not speaker:
+            speaker_elem = soup.find('meta', {'property': 'article:author'})
+            if speaker_elem:
+                speaker = speaker_elem.get('content')
+
+        title_elem = soup.find('h1')
+        title = title_elem.get_text(strip=True) if title_elem else None
+
+        return {
+            'speaker': speaker or '',
+            'title': title or '',
+            'content': '\n\n'.join(paragraphs),
+            'paragraphs': paragraphs,
+            'note_refs': note_refs,
+            'notes': notes,
+        }
+
     def scrape_conference(self, conference_url):
         """Scrape all talks from a single conference."""
         print(f"\nScraping conference: {conference_url}")
@@ -286,6 +329,8 @@ def main():
     parser = argparse.ArgumentParser(description="Scrape LDS General Conference talks to JSON.")
     parser.add_argument('--update', action='store_true',
                         help="Only scrape conferences not already in the output file")
+    parser.add_argument('--refresh', nargs='+', metavar='YYYY/MM',
+                        help="Re-scrape these conferences (e.g. 2026/04) and replace them in the output file")
     parser.add_argument("--output", default="data/general_conference_talks.json")
     args = parser.parse_args()
 
@@ -294,6 +339,17 @@ def main():
     
     scraper = ConferenceTalkScraper()
     output_file = args.output
+    if args.refresh:
+        existing = load_existing(output_file)
+        for conf in args.refresh:
+            url = f"{base_url}/{conf}?lang=eng"
+            talks = scraper.scrape_conference(url)
+            if talks:
+                existing[url] = talks
+                scraper.save_incremental(output_file, existing)
+                print(f"  ✓ Refreshed {conf}: {len(talks)} talks")
+        return
+
     existing = None
     if args.update:
         existing = load_existing(output_file)

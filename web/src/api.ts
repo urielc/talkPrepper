@@ -38,6 +38,8 @@ export interface Paragraph {
   idx: number
   text: string
   is_note: boolean
+  marker: number | null
+  note_refs: { n: number; pos: number }[]
   refs: ScriptureRefInline[]
 }
 

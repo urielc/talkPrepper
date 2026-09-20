@@ -18,23 +18,40 @@ const root = ref<HTMLElement | null>(null)
 interface Segment {
   text: string
   ref?: string
+  note?: number
 }
 
+/** Split a paragraph into plain text, scripture-reference chips and footnote markers. */
 function segments(p: Paragraph): Segment[] {
   const out: Segment[] = []
-  let pos = 0
-  const refs = [...p.refs].sort((a, b) => a.start - b.start)
+  const events: { at: number; end: number; ref?: string; note?: number }[] = []
   const seen = new Set<string>()
-  for (const r of refs) {
+  for (const r of [...p.refs].sort((a, b) => a.start - b.start)) {
     const key = `${r.start}:${r.end}`
-    if (seen.has(key) || r.start < pos) continue
+    if (seen.has(key)) continue
     seen.add(key)
-    if (r.start > pos) out.push({ text: p.text.slice(pos, r.start) })
-    out.push({ text: p.text.slice(r.start, r.end), ref: r.ref })
-    pos = r.end
+    events.push({ at: r.start, end: r.end, ref: r.ref })
+  }
+  for (const n of p.note_refs || []) events.push({ at: n.pos, end: n.pos, note: n.n })
+  events.sort((a, b) => a.at - b.at || a.end - b.end)
+  let pos = 0
+  for (const e of events) {
+    if (e.at < pos) continue
+    if (e.at > pos) out.push({ text: p.text.slice(pos, e.at) })
+    if (e.note != null) out.push({ text: '', note: e.note })
+    else out.push({ text: p.text.slice(e.at, e.end), ref: e.ref })
+    pos = e.end
   }
   if (pos < p.text.length) out.push({ text: p.text.slice(pos) })
   return out
+}
+
+function gotoNote(n: number) {
+  const el = root.value?.querySelector(`[data-note="${n}"]`) as HTMLElement | null
+  if (!el) return
+  el.scrollIntoView({ block: 'center' })
+  el.classList.add('flash')
+  setTimeout(() => el.classList.remove('flash'), 1600)
 }
 
 // Body paragraphs, minus a "By Elder X" byline that may sit after an opening epigraph.
@@ -129,8 +146,9 @@ watch(
     <div class="body">
       <p v-for="(p, i) in body" :key="p.id" :data-pid="p.id" :data-idx="p.idx" :class="{ kicker: isKicker(p, i) }">
         <template v-for="(s, i) in segments(p)" :key="i">
+          <button v-if="s.note != null" class="fn" @click="gotoNote(s.note)" :title="`Note ${s.note}`"><sup>{{ s.note }}</sup></button>
           <button
-            v-if="s.ref"
+            v-else-if="s.ref"
             class="ref"
             :class="{ active: ui.scriptureRef === s.ref }"
             @click="ui.openScripture(s.ref!)"
@@ -146,7 +164,7 @@ watch(
     <section v-if="notes.length" class="notes">
       <h3>Notes</h3>
       <ol>
-        <li v-for="p in notes" :key="p.id" :data-pid="p.id" :data-idx="p.idx">
+        <li v-for="p in notes" :key="p.id" :data-pid="p.id" :data-idx="p.idx" :data-note="p.marker ?? undefined" :value="p.marker ?? undefined">
           <template v-for="(s, i) in segments(p)" :key="i">
             <button v-if="s.ref" class="ref" :class="{ active: ui.scriptureRef === s.ref }" @click="ui.openScripture(s.ref!)">
               {{ s.text }}
@@ -207,6 +225,25 @@ watch(
 }
 .notes .ref {
   border-bottom-width: 1px;
+}
+.notes li {
+  white-space: pre-line;
+}
+.fn {
+  border: 0;
+  background: transparent;
+  padding: 0 0.05em;
+  color: var(--blue-2);
+  line-height: 0;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+.fn sup {
+  font-family: var(--sans);
+  font-size: 0.68em;
+}
+.fn:hover {
+  background: var(--blue-soft);
 }
 .seltools {
   position: absolute;
