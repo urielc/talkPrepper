@@ -59,7 +59,7 @@ function pinQuote(q: Digest['key_quotes'][number]) {
 }
 
 function pinQuestion(q: Digest['questions'][number]) {
-  lesson.addPin({ kind: 'note', text: q.question, note: `Discussion question (${q.kind})` })
+  lesson.addPin({ kind: 'note', text: q.question, note: q.note ? `${q.note} (${q.kind} question)` : `${q.kind} question` })
 }
 
 function askAbout(q: Digest['questions'][number]) {
