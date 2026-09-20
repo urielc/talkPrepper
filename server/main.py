@@ -62,4 +62,7 @@ if WEB_DIST.exists():
         candidate = WEB_DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(WEB_DIST / "index.html")
+        # The entry page must never be cached: it names the hashed asset files,
+        # so a stale copy keeps loading an old bundle after a rebuild.
+        return FileResponse(WEB_DIST / "index.html",
+                            headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
