@@ -169,11 +169,29 @@ def list_talks(q: str = "", conference: str | None = None, limit: int = Query(50
 
 # NB: sub-resource routes must come before the greedy "/talks/{talk_id:path}".
 
+MAX_MATCH_TERMS = 12
+MAX_TERM_LEN = 40
+
+
+def clean_terms(raw: str | None) -> list[str]:
+    """Comma-separated match terms from the user, fit to hand to FTS5."""
+    if not raw:
+        return []
+    out = []
+    for part in raw.split(","):
+        t = "".join(ch for ch in part if ch.isprintable() and ch != '"').strip()
+        if t:
+            out.append(t[:MAX_TERM_LEN])
+    return out[:MAX_MATCH_TERMS]
+
+
 @router.get("/talks/{talk_id:path}/related")
-def related(talk_id: str, limit: int = Query(20, le=100), conn=Depends(get_conn),
+def related(talk_id: str, limit: int = Query(20, le=100), terms: str | None = Query(None, max_length=600),
+            conn=Depends(get_conn),
             engine: SearchEngine = Depends(get_engine), _user=Depends(get_user)):
     get_talk_or_404(conn, talk_id)
-    hits, terms = engine.related_talks(talk_id, limit)
+    custom = clean_terms(terms)
+    hits, terms = engine.related_talks(talk_id, limit, custom or None)
     talks = fetch_talks(conn, [h.talk_id for h in hits])
     shared = shared_ref_counts(conn, talk_id)
     out = []
@@ -182,7 +200,8 @@ def related(talk_id: str, limit: int = Query(20, le=100), conn=Depends(get_conn)
         d["talk"] = talks.get(h.talk_id)
         d["shared_scriptures"] = shared.get(h.talk_id, 0)
         out.append(d)
-    return {"terms": terms, "results": out, "semantic": engine.semantic_available}
+    return {"terms": terms, "results": out, "semantic": engine.semantic_available,
+            "custom": bool(custom)}
 
 
 def shared_ref_counts(conn: sqlite3.Connection, talk_id: str) -> dict[str, int]:

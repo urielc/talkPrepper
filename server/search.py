@@ -70,7 +70,9 @@ def fts_query(q: str) -> str:
 
 
 def fts_or_query(terms: list[str]) -> str:
-    return " OR ".join(f'"{t}"' for t in terms if t)
+    # Each term is wrapped in double quotes, so a term containing one would close
+    # the string early and the rest would be read as FTS5 syntax. Drop them.
+    return " OR ".join(f'"{t}"' for t in (t.replace('"', " ").strip() for t in terms) if t)
 
 
 class SearchEngine:
@@ -297,8 +299,12 @@ class SearchEngine:
         scored.sort(reverse=True)
         return [w for _, w in scored[:n]]
 
-    def related_talks(self, talk_id: str, limit: int = 20) -> tuple[list[TalkHit], list[str]]:
-        terms = self.key_terms(talk_id)
+    def related_talks(self, talk_id: str, limit: int = 20,
+                      terms: list[str] | None = None) -> tuple[list[TalkHit], list[str]]:
+        """Talks like this one. ``terms`` replaces the automatic key terms for this
+        call only; the semantic leg still uses the talk's own vector, so results stay
+        anchored to the talk and the terms re-rank them rather than redirecting."""
+        terms = terms if terms else self.key_terms(talk_id)
         kw: list[TalkHit] = []
         if terms:
             kw = [h for h in self._fts_paragraphs(fts_or_query(terms), limit * 2, None, 2)

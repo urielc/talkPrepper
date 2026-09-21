@@ -118,3 +118,27 @@ def test_export_html_renders_notes_and_pins(conn):
     assert "A &lt;quote&gt;" in html          # escaped
     assert "Talk B" in html and "Elder B" in html
     assert "free text" in html
+
+
+def test_fts_or_query_neutralises_embedded_quotes():
+    """A term with a double quote would otherwise close the phrase and the rest
+    would be read as FTS5 syntax."""
+    assert fts_or_query(['faith', 'hope']) == '"faith" OR "hope"'
+    assert fts_or_query(['a" OR "b']) == '"a  OR  b"'
+    assert fts_or_query(['"', '  ', 'grace']) == '"grace"'
+
+
+def test_related_talks_uses_given_terms_instead_of_key_terms(conn):
+    from server.search import SearchEngine
+
+    conn.execute("INSERT INTO paragraphs_fts(paragraphs_fts) VALUES('rebuild')")
+    engine = SearchEngine(conn)
+    engine.key_terms = lambda tid, n=10: ['unused']       # would match nothing
+    engine.talk_vector = lambda tid: None                 # keyword leg only
+
+    _, used = engine.related_talks('2026-04/b', 10)
+    assert used == ['unused']
+
+    hits, used = engine.related_talks('2026-04/b', 10, ['faith'])
+    assert used == ['faith']
+    assert [h.talk_id for h in hits] == ['2026-04/a']      # the talk whose text has it

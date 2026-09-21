@@ -226,8 +226,10 @@ export const api = {
   talks: (q: string, conference?: string, limit = 50) =>
     get<TalkSummary[]>(`/talks?q=${encodeURIComponent(q)}${conference ? `&conference=${conference}` : ''}&limit=${limit}`),
   talk: (id: string) => get<TalkDetail>(`/talks/${id}`),
-  related: (id: string, limit = 20) =>
-    get<{ terms: string[]; results: Hit[]; semantic: boolean }>(`/talks/${id}/related?limit=${limit}`),
+  related: (id: string, limit = 20, terms?: string[]) =>
+    get<{ terms: string[]; results: Hit[]; semantic: boolean; custom: boolean }>(
+      `/talks/${id}/related?limit=${limit}` + (terms?.length ? `&terms=${encodeURIComponent(terms.join(','))}` : ''),
+    ),
   sharedScriptures: (id: string) =>
     get<{ ref: string; count: number; talks: TalkSummary[] }[]>(`/talks/${id}/shared-scriptures`),
   search: (body: {

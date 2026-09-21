@@ -8,31 +8,58 @@ const emit = defineEmits<{ (e: 'count', n: number): void }>()
 const results = ref<Hit[]>([])
 const terms = ref<string[]>([])
 const semantic = ref(true)
+const custom = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const decade = ref('')
 const speaker = ref('')
 
+/** Editing the match terms re-aims this search only; the talk's own terms are untouched. */
+const editing = ref(false)
+const draft = ref('')
+
+async function run(override?: string[]) {
+  loading.value = true
+  error.value = null
+  results.value = []
+  try {
+    const r = await api.related(props.talkId, 40, override)
+    results.value = r.results
+    terms.value = r.terms
+    semantic.value = r.semantic
+    custom.value = r.custom
+    emit('count', r.results.length)
+  } catch (e: any) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
 watch(
   () => props.talkId,
-  async (id) => {
-    loading.value = true
-    error.value = null
-    results.value = []
-    try {
-      const r = await api.related(id, 40)
-      results.value = r.results
-      terms.value = r.terms
-      semantic.value = r.semantic
-      emit('count', r.results.length)
-    } catch (e: any) {
-      error.value = e.message
-    } finally {
-      loading.value = false
-    }
+  () => {
+    editing.value = false
+    custom.value = false
+    run()
   },
   { immediate: true },
 )
+
+function startEdit() {
+  draft.value = terms.value.join(', ')
+  editing.value = true
+}
+function matchAgain() {
+  const list = draft.value.split(',').map((t) => t.trim()).filter(Boolean)
+  if (!list.length) return
+  editing.value = false
+  run(list)
+}
+function reset() {
+  editing.value = false
+  run()
+}
 
 const decades = computed(() => {
   const s = new Set<string>()
@@ -58,7 +85,25 @@ function aside(h: Hit): string | undefined {
 
 <template>
   <div>
-    <p v-if="terms.length" class="muted small terms">Matched on: {{ terms.join(', ') }}</p>
+    <div v-if="editing" class="row wrap edit">
+      <input
+        v-model="draft"
+        type="text"
+        class="terms-input"
+        aria-label="Match terms, comma separated"
+        placeholder="covenant, temple, ordinance"
+        @keydown.enter.prevent="matchAgain"
+        @keydown.esc="editing = false"
+      />
+      <button type="button" @click="matchAgain">Match again</button>
+      <button type="button" class="quiet small" @click="reset">Use the talk's terms</button>
+    </div>
+    <p v-else-if="terms.length" class="muted small terms">
+      Matched on: {{ terms.join(', ') }}
+      <span v-if="custom" class="badge">edited</span>
+      <button type="button" class="quiet small edit-btn" @click="startEdit">Edit</button>
+    </p>
+
     <div v-if="!semantic && !loading" class="notice small">
       Semantic matching is off because embeddings have not been built. Results use keywords only.
     </div>
@@ -85,6 +130,25 @@ function aside(h: Hit): string | undefined {
 <style scoped>
 .terms {
   margin-bottom: 0.5rem;
+}
+.edit-btn {
+  margin-left: 0.35rem;
+}
+.badge {
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  color: var(--gold-2);
+  font-size: 0.9em;
+}
+.edit {
+  margin-bottom: 0.5rem;
+  gap: 0.35rem;
+}
+.terms-input {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 .filters {
   margin: 0.5rem 0 0.75rem;
