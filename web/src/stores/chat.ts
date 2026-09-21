@@ -57,6 +57,13 @@ export const useChatStore = defineStore('chat', () => {
       else reply.blocks.push({ type: 'text', text: t })
     }
 
+    /** Citations arrive as the text does; park each verdict on the block holding it. */
+    const markCitation = (key: string, ok: boolean, label?: string | null) => {
+      const last = reply.blocks[reply.blocks.length - 1]
+      if (!last || last.type !== 'text') return
+      last.citations = { ...(last.citations || {}), [key]: { ok, label } }
+    }
+
     try {
       await streamChat(
         { talk_id: talkId.value, message: text, session_id: sessionId.value },
@@ -68,6 +75,9 @@ export const useChatStore = defineStore('chat', () => {
               break
             case 'text_delta':
               appendText(data.text)
+              break
+            case 'citation':
+              markCitation(data.key, data.ok, data.label)
               break
             case 'tool_call': {
               const b: ChatBlock = { type: 'tool', id: data.id, name: data.name, input: data.input }

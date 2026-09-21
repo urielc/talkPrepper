@@ -233,6 +233,19 @@ def get_verses(conn: sqlite3.Connection, book: str, chapter: int,
     return [Verse(r["book"], r["chapter"], r["verse"], r["text"]) for r in rows]
 
 
+def verses_exist(conn: sqlite3.Connection, book: str, chapter: int,
+                 verse_start: int | None = None, verse_end: int | None = None) -> bool:
+    """Whether a reference names real verses. Cheaper than get_verses, which pulls their text."""
+    if verse_start is None:
+        row = conn.execute("SELECT 1 FROM scriptures WHERE book=? AND chapter=? LIMIT 1",
+                           (book, chapter)).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM scriptures WHERE book=? AND chapter=? AND verse BETWEEN ? AND ? LIMIT 1",
+            (book, chapter, verse_start, verse_end if verse_end is not None else verse_start)).fetchone()
+    return row is not None
+
+
 def chapter_count(conn: sqlite3.Connection, book: str) -> int:
     row = conn.execute("SELECT MAX(chapter) FROM scriptures WHERE book=?", (book,)).fetchone()
     return int(row[0] or 0)

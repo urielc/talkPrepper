@@ -216,3 +216,25 @@ def normalize_title(title: str) -> str:
     t = title.lower()
     t = re.sub(r"[“”\"'‘’.,:;!?()\[\]—–-]", " ", t)
     return re.sub(r"\s+", " ", t).strip()
+
+
+def parse_ref(ref: str) -> tuple[str, int, int | None, int | None] | None:
+    """A single reference as (book, chapter, verse_start, verse_end), or None if it is not one.
+
+    Shared by the scripture router (which turns None into a 400) and the citation
+    checker (which turns it into "this citation does not resolve").
+    """
+    refs = parse_scripture_refs(ref.strip())
+    if not refs:
+        # Allow bare "Alma 32" for risky names too when the user typed it deliberately.
+        parts = ref.strip().rsplit(" ", 1)
+        if len(parts) == 2 and parts[1].isdigit() and canonical_book(parts[0]):
+            return canonical_book(parts[0]), int(parts[1]), None, None
+        return None
+    r = refs[0]
+    # Collapse a verse list (3, 5, 7–9) into its span for the lookup.
+    vs = min((x.verse_start for x in refs if x.verse_start is not None), default=None)
+    ve = max((x.verse_end or x.verse_start for x in refs if x.verse_start is not None), default=None)
+    if vs is not None and len(refs) == 1:
+        ve = r.verse_end
+    return r.book, r.chapter, vs, ve

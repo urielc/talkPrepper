@@ -119,6 +119,8 @@ export interface ChatBlock {
   summary?: string
   refs?: { type: 'talk' | 'scripture'; id?: string; ref?: string; title?: string; speaker?: string }[]
   preview?: string
+  /** Server's citation checks for this block's text, keyed "kind:value". */
+  citations?: Record<string, { ok: boolean; label?: string | null }>
 }
 
 export interface ChatMessage {

@@ -138,7 +138,7 @@ function describeCall(b: ChatBlock): string {
       <div v-for="(m, i) in chat.messages" :key="i" class="msg" :class="m.role">
         <template v-for="(b, j) in m.blocks" :key="j">
           <div v-if="b.type === 'text'" class="bubble">
-            <div class="md" v-html="renderMarkdown(b.text || '')"></div>
+            <div class="md" v-html="renderMarkdown(b.text || '', b.citations)"></div>
             <button v-if="m.role === 'assistant' && !m.streaming" class="quiet small pin" @click="pinAnswer(b)">Pin this answer</button>
           </div>
           <div v-else-if="b.type === 'tool'" class="tool">
@@ -254,6 +254,13 @@ function describeCall(b: ChatBlock): string {
 }
 .md :deep(button.cite:hover) {
   background: var(--gold-soft);
+}
+/* A citation that names nothing in the library: readable, obviously not a link. */
+.md :deep(span.cite-bad) {
+  color: var(--gold-2);
+  text-decoration: line-through dotted;
+  cursor: help;
+  font-size: 0.85em;
 }
 .pin {
   margin-top: 0.1rem;

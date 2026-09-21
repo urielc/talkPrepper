@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..citations import parse_scripture_refs
+from ..citations import parse_ref
 from ..deps import get_conn, get_user
 from ..scriptures import (
     get_verses, chapter_count, format_ref, display_book, canonical_book, BOOKS, BOOK_VOLUME,
@@ -15,20 +15,10 @@ router = APIRouter(tags=["scriptures"])
 
 
 def parse_single_ref(ref: str):
-    refs = parse_scripture_refs(ref.strip())
-    if not refs:
-        # Allow bare "Alma 32" for risky names too when the user typed it deliberately.
-        parts = ref.strip().rsplit(" ", 1)
-        if len(parts) == 2 and parts[1].isdigit() and canonical_book(parts[0]):
-            return canonical_book(parts[0]), int(parts[1]), None, None
+    parsed = parse_ref(ref)
+    if parsed is None:
         raise HTTPException(400, f"could not parse scripture reference: {ref!r}")
-    r = refs[0]
-    # Collapse a verse list (3, 5, 7–9) into its span for the lookup.
-    vs = min((x.verse_start for x in refs if x.verse_start is not None), default=None)
-    ve = max((x.verse_end or x.verse_start for x in refs if x.verse_start is not None), default=None)
-    if vs is not None and len(refs) == 1:
-        ve = r.verse_end
-    return r.book, r.chapter, vs, ve
+    return parsed
 
 
 @router.get("/scriptures/books")

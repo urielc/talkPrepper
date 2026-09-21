@@ -14,6 +14,7 @@ from ..ai import get_provider
 from ..ai.base import ChatEvent, ProviderError
 from ..ai.prompts import build_system
 from ..ai.tools import TOOLS, ToolContext
+from ..cite_check import CitationChecker, StreamScanner, scan
 from ..deps import get_conn, get_engine, get_user
 from ..log import security
 from ..settings import get_settings
@@ -86,6 +87,7 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
     conn.commit()
 
     ctx = ToolContext(conn, engine, body.talk_id)
+    checker = CitationChecker(conn)
 
     def gen() -> Iterator[str]:
         yield sse("start", {"session_id": session_id, "provider": provider.name, "model": provider.model})
@@ -93,16 +95,22 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
         text_buf: list[str] = []
         pending_tools: dict[str, dict] = {}
         error: str | None = None
+        scanner = StreamScanner(checker)
 
         def flush_text():
             if text_buf:
-                blocks.append({"type": "text", "text": "".join(text_buf)})
+                text = "".join(text_buf)
+                # Kept with the text it belongs to, so a reloaded session renders the
+                # same marks without re-checking anything.
+                blocks.append({"type": "text", "text": text, "citations": scan(text, checker)})
                 text_buf.clear()
 
         try:
             for ev in provider.stream(system, history, body.message, TOOLS, ctx.execute):
                 if ev.type == "text_delta":
                     text_buf.append(ev.data["text"])
+                    for c in scanner.feed(ev.data["text"]):
+                        yield sse("citation", c)
                 elif ev.type == "tool_call":
                     flush_text()
                     pending_tools[ev.data["id"]] = {"type": "tool", "id": ev.data["id"],
