@@ -39,11 +39,11 @@ below).
 Section 4 (`make ship-index`) was dropped: the index is copied with `data/` instead. Sections 5–6 landed
 2026-09-21 evening (deploy files, workflow, droplet), see Production.
 
-## Next (Uri, 2026-09-21 night): change the LLM model
+## LLM model (settled 2026-09-21 night)
 
-1. **LLM model.** Today the Settings page (admin) picks `anthropic_model`; default `claude-opus-5` in
-   `server/config.py`, and Uri's stored choice was `claude-sonnet-5`. Uri will say which model; change the
-   default and/or the stored setting (production and LAN databases are separate copies).
+Sonnet. `DEFAULT_ANTHROPIC_MODEL` in `server/config.py` is now `claude-sonnet-5`, which both databases
+already stored, so the default only decides what a fresh install or a cleared setting gets. The two
+hardcoded `"claude-opus-5"` fallbacks (provider factory, `AnthropicProvider.__init__`) read the constant.
 
 ## Landing page redesign (done 2026-09-21 night)
 
@@ -63,6 +63,32 @@ panels does not push the page down.
 
 Verified with headless screenshots at 1440x900, 1366x768 and 420x860, light and dark, panels open and
 closed. Rebuilt `web/dist`; production still needs a manual `rsync web/dist/` until the CI key is authorised.
+
+## Citation checking, editable match terms, wider side columns (done 2026-09-21 night)
+
+**Citations are checked against the library.** `server/cite_check.py`: a `[[talk:id]]` must be a row in
+`talks`; a `[[scripture:ref]]` only has to resolve to real verses, because the whole canon is on disk and a
+passage the model recalled without a tool call is still verifiable. What fails is **marked, not stripped** —
+struck-through amber text with a tooltip, so an invented source is visible rather than quietly removed.
+Checks run as the text streams (`StreamScanner`, which holds a partial `[[` open across deltas — the part
+with the real test coverage) and are stored on the text block, so a reloaded session shows the same marks.
+Measured at ~4 µs per talk citation and ~8 µs per scripture, memoised per request; ~0.2 ms for a
+heavily-cited answer. `parse_single_ref` split into `citations.parse_ref` (returns None) plus a router
+wrapper that still 400s; `scriptures.verses_exist` answers existence without pulling verse text.
+
+**What this does not do:** it checks that a reference exists, not that the model's claim about it is true. A
+real talk id paired with the wrong title still passes. Quoted prose is not verified against any retrieved
+passage — that is the bigger remaining gap. The digest is unaffected (it emits no `[[…]]` citations).
+
+**"Matched on" is editable** for one search. `related_talks(talk_id, limit, terms=None)`: given terms
+replace the TF-IDF key terms for the keyword leg only — the semantic leg still uses `talk_vector`, so results
+stay anchored to the talk. Nothing is persisted; switching talks drops the override. `fts_or_query` now
+strips double quotes (a term containing one would have closed the phrase and let the rest through as FTS5
+syntax), and the router drops non-printables and caps input at 12 terms of 40 characters.
+
+**Side columns scale with the window** (`--research-w`/`--notes-w` are `clamp()`s floored at the old fixed
+widths) and `.reader-pane`/`.digest-pane` lost 1.25rem of side padding. Measured: at 1920px the sidebars go
+380/400 → 499/518; at 1400px nothing changes except the reader text, which gains 25px from the padding cut.
 
 ## Production (deployed 2026-09-21 evening)
 
@@ -88,7 +114,7 @@ RAM) alongside other sites. Access details live in Uri's private notes, not in t
 - The LAN instance on this machine keeps running separately (started 2026-09-21 midday on commit 2106939);
   the two databases diverge from 2026-09-21.
 
-## Still open: related-talks list, tabbed reading, tighter centre margins
+## Still open: related-talks list, tabbed reading
 
 Asked by Uri on 2026-09-20:
 
@@ -103,9 +129,7 @@ Asked by Uri on 2026-09-20:
    tab, closable extra tabs, each a `TalkReader`), while `.digest-pane` and the notes/pins column stay bound
    to the lesson talk (`props.talkId`). Keep the drawer for scripture-panel "talks citing" and AI citations,
    or route those to tabs too — Uri didn't say; ask or default to tabs.
-3. **Tighter centre margins** — `.reader-pane`/`.digest-pane` padding is `1.75rem 3rem` / `0.75rem 3rem`
-   and `--reader-width: 46rem` in `web/src/styles/tokens.css`; side columns are `--research-w: 380px` /
-   `--notes-w: 400px`. Reduce centre padding and let the side columns grow (e.g. `minmax(380px, 1fr)`).
+3. ~~**Tighter centre margins**~~ — done 2026-09-21, see below.
 
 ## Pins and digest questions
 
