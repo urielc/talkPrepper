@@ -39,20 +39,30 @@ below).
 Section 4 (`make ship-index`) was dropped: the index is copied with `data/` instead. Sections 5–6 landed
 2026-09-21 evening (deploy files, workflow, droplet), see Production.
 
-## Next (Uri, 2026-09-21 night): change the LLM model, redo the landing page
+## Next (Uri, 2026-09-21 night): change the LLM model
 
 1. **LLM model.** Today the Settings page (admin) picks `anthropic_model`; default `claude-opus-5` in
    `server/config.py`, and Uri's stored choice was `claude-sonnet-5`. Uri will say which model; change the
    default and/or the stored setting (production and LAN databases are separate copies).
-2. **Landing page** (`web/src/views/LandingView.vue`, content in `web/src/content/{hero.json,landing.md,videos.json}`):
-   move the featured video up (today it sits under the three counsel columns), and turn the three
-   columns ("What this tool is for", "What it is not for", "What Church leaders have said", split from
-   `landing.md` on `## ` headings) into a collapsible list to the right of the video, so little remains
-   below the fold. "Sources" stays beneath. Hazards: the CSP blocks inline scripts (see the screenshot
-   recipe in memory); `landing.md` is a build-time asset rendered with `v-html` via the sanitised
-   `renderMarkdown`; the video poster/iframe hosts are whitelisted in `server/middleware.py` CSP.
-   Rebuild with `cd web && npm run build`; production gets it via the pipeline (once the CI key is
-   authorised) or a manual pull + `rsync web/dist/`.
+
+## Landing page redesign (done 2026-09-21 night)
+
+`web/src/views/LandingView.vue` was rebuilt so the featured video and the counsel text share the first
+screen. The navy hero is now a headline strip (`h1` left, subtitle small on the right, ~150px instead of
+~320px); below the menu line a `.stage` grid puts the player on the left (7fr) and a collapsible column on
+the right (5fr). The three `landing.md` sections became `CollapsibleSection`s (the first open, state in
+`localStorage` under `lp.section.landing.*`), and the Handbook 38.8.47 quote — formerly the gold aside in
+the hero — is a fourth, gold-bordered item, so `hero.json` gained `handbook.shortLabel` for its header.
+Only the extra-video row and Sources remain below the fold.
+
+The player is sized by clamping its **width** (`width: min(100%, calc(var(--stage-h) * 16 / 9))`) rather
+than its height, so it stays 16:9 at any viewport; `--stage-h` is `clamp(200px, calc(100svh - 26rem), 460px)`,
+where 26rem is the topbar + hero strip + menu bar + caption. If the caption grows, raise that number or the
+blurb falls below the fold. The counsel column is capped and scrolls internally above 1000px so expanding two
+panels does not push the page down.
+
+Verified with headless screenshots at 1440x900, 1366x768 and 420x860, light and dark, panels open and
+closed. Rebuilt `web/dist`; production still needs a manual `rsync web/dist/` until the CI key is authorised.
 
 ## Production (deployed 2026-09-21 evening)
 

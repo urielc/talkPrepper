@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useLessonStore } from '../stores/lesson'
 import { renderMarkdown } from '../utils/markdown'
+import CollapsibleSection from '../components/CollapsibleSection.vue'
 import counselMd from '../content/landing.md?raw'
 import hero from '../content/hero.json'
 import videosJson from '../content/videos.json'
@@ -62,15 +63,8 @@ function posterFallback(e: Event) {
   <div class="landing">
     <section class="hero">
       <div class="hero-inner">
-        <div class="hero-text">
-          <h1>{{ hero.title }}</h1>
-          <p>{{ hero.subtitle }}</p>
-        </div>
-        <aside class="handbook">
-          <div class="hb-label">{{ hero.handbook.label }}</div>
-          <p class="serif">{{ hero.handbook.text }}</p>
-          <a :href="hero.handbook.link" target="_blank" rel="noopener" class="hb-link">{{ hero.handbook.linkLabel }}</a>
-        </aside>
+        <h1>{{ hero.title }}</h1>
+        <p class="lede">{{ hero.subtitle }}</p>
       </div>
     </section>
 
@@ -84,17 +78,9 @@ function posterFallback(e: Event) {
     </nav>
 
     <div class="body">
-      <div class="columns">
-        <section v-for="s in columns" :key="s.title" class="column">
-          <h2>{{ s.title }}</h2>
-          <div class="md" v-html="s.html"></div>
-        </section>
-      </div>
-
-      <section v-if="featured" class="videos">
-        <h2>Proper use of AI in the church</h2>
-
-        <div class="feature">
+      <!-- The video carries the page's message, so it and the counsel share the first screen. -->
+      <div class="stage">
+        <section v-if="featured" class="stage-video">
           <div class="player">
             <iframe
               v-if="playing && embed(featured.url)"
@@ -111,24 +97,53 @@ function posterFallback(e: Event) {
               </span>
             </button>
           </div>
-          <div class="feature-text">
-            <h3 class="serif">{{ featured.title }}</h3>
-            <p class="f-speaker">{{ featured.speaker }}</p>
-            <p v-if="featured.blurb" class="f-blurb">{{ featured.blurb }}</p>
-            <a :href="featured.url" target="_blank" rel="noopener" class="f-link">Watch on YouTube</a>
+          <div class="caption">
+            <h2 class="serif">{{ featured.title }}</h2>
+            <p class="c-meta">
+              {{ featured.speaker }}<span class="sep" aria-hidden="true"> · </span><a
+                :href="featured.url"
+                target="_blank"
+                rel="noopener"
+                >Watch on YouTube</a
+              >
+            </p>
+            <p v-if="featured.blurb" class="c-blurb">{{ featured.blurb }}</p>
           </div>
-        </div>
+        </section>
 
-        <ul v-if="more.length" class="video-row">
-          <li v-for="v in more" :key="v.url">
-            <a :href="v.url" target="_blank" rel="noopener" class="video">
-              <img v-if="thumb(v.url)" :src="thumb(v.url)!" :alt="`Watch: ${v.title}`" loading="lazy" />
-              <span class="v-title">{{ v.title }}</span>
-              <span class="v-speaker">{{ v.speaker }}</span>
-            </a>
-          </li>
-        </ul>
-      </section>
+        <div class="counsel">
+          <CollapsibleSection
+            v-for="(s, i) in columns"
+            :key="s.title"
+            :title="s.title"
+            :storage-key="`landing.${i}`"
+            :default-open="i === 0"
+          >
+            <div class="md" v-html="s.html"></div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            class="hb-item"
+            :title="hero.handbook.shortLabel"
+            storage-key="landing.handbook"
+            :default-open="false"
+          >
+            <p class="hb-label">{{ hero.handbook.label }}</p>
+            <p class="serif hb-text">{{ hero.handbook.text }}</p>
+            <a :href="hero.handbook.link" target="_blank" rel="noopener" class="hb-link">{{ hero.handbook.linkLabel }}</a>
+          </CollapsibleSection>
+        </div>
+      </div>
+
+      <ul v-if="more.length" class="video-row">
+        <li v-for="v in more" :key="v.url">
+          <a :href="v.url" target="_blank" rel="noopener" class="video">
+            <img v-if="thumb(v.url)" :src="thumb(v.url)!" :alt="`Watch: ${v.title}`" loading="lazy" />
+            <span class="v-title">{{ v.title }}</span>
+            <span class="v-speaker">{{ v.speaker }}</span>
+          </a>
+        </li>
+      </ul>
 
       <section v-if="sources" class="sources">
         <h2>{{ sources.title }}</h2>
@@ -139,7 +154,7 @@ function posterFallback(e: Event) {
 </template>
 
 <style scoped>
-/* ---- hero: fixed navy in both themes, like the Church site's hero band */
+/* ---- hero: a headline strip, fixed navy in both themes, like the Church site's hero band */
 .hero {
   background: #0b2e59;
   color: #fff;
@@ -147,53 +162,24 @@ function posterFallback(e: Event) {
 .hero-inner {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2.75rem 2rem;
+  padding: 1.5rem 2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: 2.5rem;
   align-items: center;
 }
-.hero-text h1 {
+.hero-inner h1 {
   color: #fff;
-  font-size: clamp(1.7rem, 2.6vw, 2.4rem);
+  font-size: clamp(1.5rem, 2.2vw, 2.1rem);
   line-height: 1.15;
   letter-spacing: -0.01em;
   max-width: 24ch;
 }
-.hero-text p {
-  margin-top: 1rem;
-  font-size: var(--fs-2);
-  line-height: 1.55;
-  max-width: 58ch;
-  color: rgba(255, 255, 255, 0.88);
-}
-.handbook {
-  background: rgba(255, 255, 255, 0.08);
-  border-left: 3px solid #c9a227;
-  padding: 1.1rem 1.3rem;
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-.hb-label {
-  font-size: var(--fs-0);
-  color: #e6d9a8;
-  margin-bottom: 0.4rem;
-}
-.handbook p {
-  line-height: 1.55;
-  font-size: 1.02rem;
-}
-.hb-link {
-  display: inline-block;
-  margin-top: 0.75rem;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.75rem;
-  font-size: var(--fs-0);
-}
-.hb-link:hover {
-  background: rgba(255, 255, 255, 0.12);
-  text-decoration: none;
+.lede {
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  max-width: 52ch;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* ---- menu bar */
@@ -229,58 +215,24 @@ function posterFallback(e: Event) {
   color: var(--ink-2);
 }
 
-/* ---- three columns */
+/* ---- the first screen: player beside the collapsible counsel */
 .body {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2.5rem 2rem 4rem;
+  padding: 1.75rem 2rem 4rem;
 }
-.columns {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3rem;
-}
-.column h2,
-.videos h2,
-.sources h2 {
-  font-family: var(--serif);
-  font-size: var(--fs-3);
-  margin-bottom: 0.6rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 2px solid var(--gold);
-}
-.md {
-  font-size: 1.02rem;
-  line-height: 1.55;
-  color: var(--ink-2);
-}
-.md :deep(ul) {
-  padding-left: 1.1rem;
-  margin: 0;
-}
-.md :deep(li) {
-  margin-bottom: 0.45rem;
-}
-.md :deep(p) {
-  margin: 0 0 0.85rem;
-}
-.md :deep(a) {
-  color: var(--blue-2);
-}
-
-/* ---- videos and sources */
-.videos,
-.sources {
-  margin-top: 3rem;
-}
-.feature {
+.stage {
+  /* What is left of the viewport under the topbar, hero strip, menu bar and the caption. */
+  --stage-h: clamp(200px, calc(100vh - 26rem), 460px);
+  --stage-h: clamp(200px, calc(100svh - 26rem), 460px);
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: 2.5rem;
-  align-items: center;
-  margin-top: 1.25rem;
+  gap: 2rem;
+  align-items: start;
 }
 .player {
+  /* Clamp the width, not the height, so the box never stops being 16:9. */
+  width: min(100%, calc(var(--stage-h) * 16 / 9));
   position: relative;
   aspect-ratio: 16 / 9;
   background: #000;
@@ -335,37 +287,108 @@ function posterFallback(e: Event) {
   outline: none;
   box-shadow: inset var(--focus);
 }
-.feature-text h3 {
-  font-size: var(--fs-4);
-  line-height: 1.2;
-  font-weight: 600;
-  max-width: 22ch;
+.caption {
+  width: min(100%, calc(var(--stage-h) * 16 / 9));
+  margin-top: 0.85rem;
 }
-.f-speaker {
-  margin-top: 0.4rem;
-  color: var(--ink-2);
+.caption h2 {
   font-size: var(--fs-2);
+  line-height: 1.25;
+  font-weight: 600;
+  border: 0;
+  padding: 0;
+  margin: 0;
 }
-.f-blurb {
-  margin-top: 1rem;
+.c-meta {
+  margin-top: 0.2rem;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+}
+.c-meta a {
+  color: var(--blue-2);
+}
+.c-blurb {
+  margin-top: 0.45rem;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- collapsible counsel column */
+.counsel {
+  max-height: calc(var(--stage-h) + 5rem);
+  overflow-y: auto;
+}
+.counsel :deep(.csec:last-child) {
+  margin-bottom: 0;
+}
+.hb-item {
+  border-left: 3px solid var(--gold);
+  padding-left: 0.75rem;
+}
+.hb-label {
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  margin-bottom: 0.4rem;
+}
+.hb-text {
+  line-height: 1.55;
+  color: var(--ink);
+}
+.hb-link {
+  display: inline-block;
+  margin-top: 0.7rem;
+  color: var(--blue-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.7rem;
+  font-size: var(--fs-0);
+}
+.hb-link:hover {
+  background: var(--paper-2);
+  text-decoration: none;
+}
+.md {
+  font-size: 1.02rem;
   line-height: 1.55;
   color: var(--ink-2);
-  max-width: 48ch;
 }
-.f-link {
-  display: inline-block;
-  margin-top: 1.1rem;
+.md :deep(ul) {
+  padding-left: 1.1rem;
+  margin: 0;
+}
+.md :deep(li) {
+  margin-bottom: 0.45rem;
+}
+.md :deep(p) {
+  margin: 0 0 0.85rem;
+}
+.md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.md :deep(a) {
   color: var(--blue-2);
-  font-size: var(--fs-1);
-  border-bottom: 1px solid currentColor;
 }
-.f-link:hover {
-  text-decoration: none;
-  color: var(--gold-2);
+
+/* ---- below the fold: any further videos, then sources */
+.sources {
+  margin-top: 3rem;
+}
+.sources h2 {
+  font-family: var(--serif);
+  font-size: var(--fs-3);
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--gold);
 }
 .video-row {
   list-style: none;
-  margin: 2rem 0 0;
+  margin: 2.5rem 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -410,13 +433,17 @@ function posterFallback(e: Event) {
 }
 
 @media (max-width: 1000px) {
-  .columns {
+  .stage {
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 1.75rem;
   }
-  .feature {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
+  .player,
+  .caption {
+    width: 100%;
+  }
+  .counsel {
+    max-height: none;
+    overflow-y: visible;
   }
   .sources .md {
     columns: 1;
@@ -425,7 +452,8 @@ function posterFallback(e: Event) {
 @media (max-width: 760px) {
   .hero-inner {
     grid-template-columns: 1fr;
-    padding: 2rem 1.25rem;
+    gap: 0.9rem;
+    padding: 1.5rem 1.25rem;
   }
   .menubar-inner,
   .body {
