@@ -2,7 +2,7 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## As of 2026-09-20
+## As of 2026-09-21
 
 **Digest feature:** committed 2026-09-15 (87db893) after a real end-to-end run with Sonnet 5 on 2026-09-11 (31 tests green). Working tree clean as of 2026-09-20.
 
@@ -14,19 +14,50 @@ not survive a reboot; a systemd user unit was offered but not built.
 
 **No git remote** is configured; nothing has ever been pushed.
 
-## Endnotes are now scraped separately (partial data until the re-scrape lands)
+## Endnotes scraped separately — full data swap in progress
 
-Fixed 2026-09-20: `scrape_conference_talks.py` now pulls `<footer class="notes">` into a `notes` list per talk
-(`{n, text}`) and records footnote-marker positions per body paragraph (`note_refs`); the indexer stores
-`marker` / `note_refs` on `paragraphs` and only falls back to the `mark_notes` heuristic for talks scraped
-with the old extractor; the reader renders clickable superscript markers that jump to the numbered note.
-`--refresh YYYY/MM` re-scrapes chosen conferences in place.
+The scraper (since 0317794) stores endnotes per talk (`notes`) with in-text marker positions (`note_refs`);
+the indexer stores `marker`/`note_refs` on `paragraphs`; the reader shows clickable superscript markers.
 
-**Only April 2026 has been refreshed so far.** A full re-scrape with the new extractor was started on
-2026-09-20 writing `general_conference_talks.new.json` (log in the session scratchpad, ~2.5 h at 1 req/s).
-When it finishes: verify talk count (4,267) and that every talk has a `notes` key, move it to
-`data/general_conference_talks.json`, run `python -m server.cli index`, restart the server. Until then, older
-talks still show heuristically-detected notes without markers.
+The full re-scrape finished 2026-09-20: 4,267 talks, all with a `notes` key, 26,312 endnotes, same talk URLs
+as before. Swapped into `data/general_conference_talks.json`, index rebuilt (42 s, 519 chunks re-embedded,
+built_at 2026-09-20T17:21:35) and server restarted the same evening; older talks now show numbered notes
+(e.g. 2025-10/32dennis has 35 marked notes). Nothing pending here.
+
+## Multi-user + hosting (plan approved 2026-09-21; sections 1–3 built the same day)
+
+Done locally on 2026-09-21: users/sessions/invites/working_on tables; argon2 passwords; cookie sessions;
+per-user notes, pins, chats and "My lessons" (replaces the single current talk); admin-only Settings/Users/
+index; invite + set-password + forgot-password flows; landing page with the preparation statement
+(`web/src/content/landing.md`), a Church-leaders video row (`web/src/content/videos.json`, empty until Uri
+adds `{title, speaker, url}` entries), My lessons and the talk picker. The LAN database was migrated; Uri's
+data belongs to the admin account `uri@uacconsulting.com`, which still needs its password set from the
+invite link printed on 2026-09-21 (valid 72 h; regenerate with `python -m server.cli migrate` + Users page,
+or `issue_invite`).
+
+Not yet done from the plan: section 4 (ship-index), 5 (deploy files: `deploy/nginx.conf`,
+`deploy/lessonprep.service`, `deploy/README.md`, `.github/workflows/deploy.yml`), 6 (droplet step 0), the
+GitHub remote under `UrielC`, and the earlier UI task below. Email invites use the Postmark settings already
+in the DB; tested only with email unconfigured (link handed to admin) — a real invite email has not been sent.
+
+## Still open: related-talks list, tabbed reading, tighter centre margins
+
+Asked by Uri on 2026-09-20:
+
+1. **Related talks collapsible and compact** — show only title, speaker and month/year (no snippets, no
+   "shared scriptures" aside). Today `ResearchColumn.vue` wraps `RelatedSection.vue` in `CollapsibleSection`
+   (the whole section already collapses); the compaction is inside `RelatedSection.vue`, which passes
+   `snippets` and `aside` to `TalkListItem.vue` (props `snippets?`, `aside?`). Conference label already
+   carries "April 2026"-style month/year (`talk.conference`).
+2. **Open related talks as tabs in the centre top pane** instead of the slide-over drawer. Today
+   `TalkListItem` calls `ui.openTalk(id)` (`web/src/stores/ui.ts`, `drawerTalkId`) and `TalkDrawer.vue`
+   renders it. Plan: a tab strip above `.reader-pane` in `WorkspaceView.vue` (lesson talk pinned as first
+   tab, closable extra tabs, each a `TalkReader`), while `.digest-pane` and the notes/pins column stay bound
+   to the lesson talk (`props.talkId`). Keep the drawer for scripture-panel "talks citing" and AI citations,
+   or route those to tabs too — Uri didn't say; ask or default to tabs.
+3. **Tighter centre margins** — `.reader-pane`/`.digest-pane` padding is `1.75rem 3rem` / `0.75rem 3rem`
+   and `--reader-width: 46rem` in `web/src/styles/tokens.css`; side columns are `--research-w: 380px` /
+   `--notes-w: 400px`. Reduce centre padding and let the side columns grow (e.g. `minmax(380px, 1fr)`).
 
 ## Pins and digest questions
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..citations import parse_scripture_refs
-from ..deps import get_conn
+from ..deps import get_conn, get_user
 from ..scriptures import (
     get_verses, chapter_count, format_ref, display_book, canonical_book, BOOKS, BOOK_VOLUME,
 )
@@ -37,7 +37,7 @@ def books():
 
 
 @router.get("/scriptures/lookup")
-def lookup(ref: str = Query(..., min_length=3), conn=Depends(get_conn)):
+def lookup(ref: str = Query(..., min_length=3), conn=Depends(get_conn), _user=Depends(get_user)):
     book, chapter, vs, ve = parse_single_ref(ref)
     verses = get_verses(conn, book, chapter, vs, ve)
     if not verses:
@@ -53,7 +53,7 @@ def lookup(ref: str = Query(..., min_length=3), conn=Depends(get_conn)):
 
 @router.get("/scriptures/lookup/talks")
 def lookup_talks(ref: str = Query(..., min_length=3), limit: int = Query(50, le=200),
-                 exclude: str | None = None, conn=Depends(get_conn)):
+                 exclude: str | None = None, conn=Depends(get_conn), _user=Depends(get_user)):
     book, chapter, vs, ve = parse_single_ref(ref)
     res = talks_citing(conn, book, chapter, vs, ve, exclude=exclude, limit=limit)
     res["ref"] = format_ref(book, chapter, vs, ve)
@@ -61,7 +61,7 @@ def lookup_talks(ref: str = Query(..., min_length=3), limit: int = Query(50, le=
 
 
 @router.get("/scriptures/{book}/{chapter}")
-def chapter(book: str, chapter: int, conn=Depends(get_conn)):
+def chapter(book: str, chapter: int, conn=Depends(get_conn), _user=Depends(get_user)):
     canon = canonical_book(book)
     if not canon:
         raise HTTPException(404, f"unknown book {book!r}")

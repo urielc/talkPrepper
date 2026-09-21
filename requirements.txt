@@ -14,6 +14,7 @@ numpy>=1.26
 sentence-transformers>=3.0
 torch>=2.2          # CPU build is fine: pip install --index-url https://download.pytorch.org/whl/cpu torch
 markdown>=3.6
+argon2-cffi>=23.1
 
 # dev
 pytest>=8

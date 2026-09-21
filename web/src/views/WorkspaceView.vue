@@ -107,10 +107,10 @@ onBeforeUnmount(endDrag)
           <a :href="talk.url" target="_blank" rel="noopener">Read on churchofjesuschrist.org</a>
         </div>
         <div class="current-row">
-          <button v-if="lesson.current?.id === talk.id" class="small gold" @click="lesson.setCurrent(null)" title="Clear the current lesson">
-            Current lesson ✓
+          <button v-if="lesson.isMine(talk.id)" class="small gold" @click="lesson.removeMine(talk.id)" title="Remove from my lessons">
+            In my lessons ✓
           </button>
-          <button v-else class="small" @click="lesson.setCurrent(talk.id)">Mark as current lesson</button>
+          <button v-else class="small" @click="lesson.addMine(talk.id)">Add to my lessons</button>
         </div>
         <div class="row between neighbors small">
           <RouterLink v-if="talk.prev" :to="talkRoute(talk.prev.id)" class="muted">‹ {{ talk.prev.title }}</RouterLink>

@@ -17,9 +17,9 @@ const error = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    const s = await api.settings()
-    ready.value = Boolean(s.email_ready)
-    missing.value = String(s.email_missing || '')
+    const s = await api.aiStatus()
+    ready.value = s.email_ready
+    missing.value = s.email_missing || ''
     try {
       to.value = localStorage.getItem('lp.lastEmailTo') || ''
     } catch {

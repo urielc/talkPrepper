@@ -5,12 +5,14 @@ import { api, type ChatBlock } from '../api'
 import { useChatStore } from '../stores/chat'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
+import { useAuthStore } from '../stores/auth'
 import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps<{ talkId: string; draft?: string }>()
 const chat = useChatStore()
 const lesson = useLessonStore()
 const ui = useUiStore()
+const auth = useAuthStore()
 
 const input = ref('')
 const configured = ref<boolean | null>(null)
@@ -21,10 +23,9 @@ const openTools = ref<Set<string>>(new Set())
 onMounted(async () => {
   await chat.load(props.talkId)
   try {
-    const s = await api.settings()
-    const prov = String(s.ai_provider)
-    configured.value = prov === 'anthropic' ? Boolean(s.anthropic_api_key_set) : Boolean(s.ollama_model)
-    providerLabel.value = prov === 'anthropic' ? `Claude (${s.anthropic_model})` : `Ollama (${s.ollama_model || 'no model'})`
+    const s = await api.aiStatus()
+    configured.value = s.configured
+    providerLabel.value = s.label
   } catch {
     configured.value = false
   }
@@ -106,8 +107,11 @@ function describeCall(b: ChatBlock): string {
 <template>
   <div class="chat">
     <div v-if="configured === false" class="notice">
-      No AI provider is set up yet. Add an Anthropic API key or an Ollama model in
-      <RouterLink to="/settings">Settings</RouterLink>.
+      <template v-if="auth.user?.is_admin">
+        No AI provider is set up yet. Add an Anthropic API key or an Ollama model in
+        <RouterLink to="/settings">Settings</RouterLink>.
+      </template>
+      <template v-else>The AI assistant is not set up yet. Ask the administrator.</template>
     </div>
 
     <div class="row between sessions">

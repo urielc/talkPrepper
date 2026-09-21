@@ -8,8 +8,7 @@ import sqlite3
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..settings import get_setting, set_settings
-from ..deps import get_conn, get_engine
+from ..deps import get_conn, get_engine, get_user
 from ..search import SearchEngine, fts_query
 from ..scriptures import format_ref, display_book
 
@@ -54,28 +53,60 @@ def get_talk_or_404(conn: sqlite3.Connection, talk_id: str) -> sqlite3.Row:
     return r
 
 
-class CurrentTalkBody(BaseModel):
-    talk_id: str | None = None
+class MyLessonBody(BaseModel):
+    talk_id: str
 
 
-@router.get("/current-talk")
-def get_current_talk(conn=Depends(get_conn)):
-    """The talk the user is currently preparing, or null."""
-    tid = get_setting(conn, "current_talk_id")
-    talk = fetch_talks(conn, [tid]).get(tid) if tid else None
-    return {"talk_id": tid or None, "talk": talk}
+class ReorderMine(BaseModel):
+    talk_ids: list[str]
 
 
-@router.put("/current-talk")
-def set_current_talk(body: CurrentTalkBody, conn=Depends(get_conn)):
-    if body.talk_id:
-        get_talk_or_404(conn, body.talk_id)
-    set_settings(conn, {"current_talk_id": body.talk_id or ""})
-    return get_current_talk(conn)
+def my_lessons(conn: sqlite3.Connection, uid: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT w.talk_id, w.added_at, w.ord, "
+        "COALESCE((SELECT LENGTH(notes_md) FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id), 0) AS notes_len, "
+        "(SELECT COUNT(*) FROM pins p WHERE p.user_id=w.user_id AND p.talk_id=w.talk_id) AS pin_count, "
+        "EXISTS(SELECT 1 FROM digests d WHERE d.talk_id=w.talk_id) AS has_digest, "
+        "(SELECT updated_at FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id) AS updated_at "
+        "FROM working_on w WHERE w.user_id=? ORDER BY w.ord, w.added_at", (uid,)).fetchall()
+    talks = fetch_talks(conn, [r["talk_id"] for r in rows])
+    return [{"talk": talks[r["talk_id"]], "added_at": r["added_at"], "notes_len": r["notes_len"],
+             "pin_count": r["pin_count"], "has_digest": bool(r["has_digest"]), "updated_at": r["updated_at"]}
+            for r in rows if r["talk_id"] in talks]
+
+
+@router.get("/my-lessons")
+def list_my_lessons(conn=Depends(get_conn), user=Depends(get_user)):
+    """The talks this user is working on."""
+    return my_lessons(conn, user["id"])
+
+
+@router.put("/my-lessons")
+def add_my_lesson(body: MyLessonBody, conn=Depends(get_conn), user=Depends(get_user)):
+    get_talk_or_404(conn, body.talk_id)
+    nxt = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM working_on WHERE user_id=?", (user["id"],)).fetchone()[0]
+    conn.execute("INSERT OR IGNORE INTO working_on(user_id, talk_id, ord) VALUES(?,?,?)", (user["id"], body.talk_id, nxt))
+    conn.commit()
+    return my_lessons(conn, user["id"])
+
+
+@router.post("/my-lessons/reorder")
+def reorder_my_lessons(body: ReorderMine, conn=Depends(get_conn), user=Depends(get_user)):
+    for i, tid in enumerate(body.talk_ids):
+        conn.execute("UPDATE working_on SET ord=? WHERE user_id=? AND talk_id=?", (i, user["id"], tid))
+    conn.commit()
+    return my_lessons(conn, user["id"])
+
+
+@router.delete("/my-lessons/{talk_id:path}")
+def remove_my_lesson(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
+    conn.execute("DELETE FROM working_on WHERE user_id=? AND talk_id=?", (user["id"], talk_id))
+    conn.commit()
+    return my_lessons(conn, user["id"])
 
 
 @router.get("/conferences")
-def list_conferences(conn=Depends(get_conn)):
+def list_conferences(conn=Depends(get_conn), _user=Depends(get_user)):
     rows = conn.execute(
         "SELECT c.id, c.year, c.month, c.label, c.url, COUNT(t.id) AS talk_count "
         "FROM conferences c LEFT JOIN talks t ON t.conference_id=c.id "
@@ -84,13 +115,14 @@ def list_conferences(conn=Depends(get_conn)):
 
 
 @router.get("/conferences/{conference_id}/talks")
-def conference_talks(conference_id: str, conn=Depends(get_conn)):
+def conference_talks(conference_id: str, conn=Depends(get_conn), user=Depends(get_user)):
     rows = conn.execute(TALK_SELECT + "WHERE t.conference_id=? ORDER BY t.ord", (conference_id,)).fetchall()
     if not rows:
         raise HTTPException(404, "conference not found")
     lessons = {r["talk_id"]: r for r in conn.execute(
         "SELECT l.talk_id, LENGTH(l.notes_md) AS notes_len, "
-        "(SELECT COUNT(*) FROM pins p WHERE p.talk_id=l.talk_id) AS pin_count FROM lessons l")}
+        "(SELECT COUNT(*) FROM pins p WHERE p.talk_id=l.talk_id AND p.user_id=l.user_id) AS pin_count "
+        "FROM lessons l WHERE l.user_id=?", (user["id"],))}
     out = []
     for r in rows:
         d = talk_row_to_dict(r)
@@ -102,7 +134,7 @@ def conference_talks(conference_id: str, conn=Depends(get_conn)):
 
 @router.get("/talks")
 def list_talks(q: str = "", conference: str | None = None, limit: int = Query(50, le=500),
-               conn=Depends(get_conn)):
+               conn=Depends(get_conn), _user=Depends(get_user)):
     """Talk picker: match title/speaker (and exact phrases in the text)."""
     q = q.strip()
     if not q:
@@ -139,7 +171,7 @@ def list_talks(q: str = "", conference: str | None = None, limit: int = Query(50
 
 @router.get("/talks/{talk_id:path}/related")
 def related(talk_id: str, limit: int = Query(20, le=100), conn=Depends(get_conn),
-            engine: SearchEngine = Depends(get_engine)):
+            engine: SearchEngine = Depends(get_engine), _user=Depends(get_user)):
     get_talk_or_404(conn, talk_id)
     hits, terms = engine.related_talks(talk_id, limit)
     talks = fetch_talks(conn, [h.talk_id for h in hits])
@@ -165,7 +197,7 @@ def shared_ref_counts(conn: sqlite3.Connection, talk_id: str) -> dict[str, int]:
 
 
 @router.get("/talks/{talk_id:path}/shared-scriptures")
-def shared_scriptures(talk_id: str, limit_per_passage: int = 12, conn=Depends(get_conn)):
+def shared_scriptures(talk_id: str, limit_per_passage: int = 12, conn=Depends(get_conn), _user=Depends(get_user)):
     """For each passage this talk cites, the other talks that cite it too."""
     get_talk_or_404(conn, talk_id)
     refs = conn.execute(
@@ -215,7 +247,7 @@ def talks_citing(conn: sqlite3.Connection, book: str, chapter: int, vs: int | No
 
 
 @router.get("/talks/{talk_id:path}")
-def talk_detail(talk_id: str, conn=Depends(get_conn)):
+def talk_detail(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
     r = get_talk_or_404(conn, talk_id)
     talk = talk_row_to_dict(r)
     paras = conn.execute(
@@ -279,7 +311,9 @@ def talk_detail(talk_id: str, conn=Depends(get_conn)):
     talk["prev"] = talk_row_to_dict(sib[i - 1]) if i > 0 else None
     talk["next"] = talk_row_to_dict(sib[i + 1]) if i + 1 < len(sib) else None
 
-    les = conn.execute("SELECT notes_md FROM lessons WHERE talk_id=?", (talk_id,)).fetchone()
-    pins = conn.execute("SELECT COUNT(*) FROM pins WHERE talk_id=?", (talk_id,)).fetchone()[0]
-    talk["lesson"] = {"has_notes": bool(les and les["notes_md"]), "pin_count": pins}
+    uid = user["id"]
+    les = conn.execute("SELECT notes_md FROM lessons WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
+    pins = conn.execute("SELECT COUNT(*) FROM pins WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()[0]
+    mine = conn.execute("SELECT 1 FROM working_on WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
+    talk["lesson"] = {"has_notes": bool(les and les["notes_md"]), "pin_count": pins, "mine": bool(mine)}
     return talk

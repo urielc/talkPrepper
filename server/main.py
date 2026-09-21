@@ -12,13 +12,15 @@ from fastapi.staticfiles import StaticFiles
 from . import db as dbm
 from .config import WEB_DIST
 from .search import SearchEngine
-from .routers import talks, search, scriptures, lessons, settings, chat, admin, digest
+from .migrate import apply_schema
+from .routers import talks, search, scriptures, lessons, settings, chat, admin, digest, auth, users
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = dbm.connect()
     dbm.ensure_schema(conn)
+    apply_schema(conn)
     app.state.conn = conn
     app.state.engine = SearchEngine(conn)
     app.state.index_job = None
@@ -37,8 +39,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (digest.router, talks.router, search.router, scriptures.router, lessons.router,
-          settings.router, chat.router, admin.router):
+for r in (auth.router, users.router, digest.router, talks.router, search.router, scriptures.router,
+          lessons.router, settings.router, chat.router, admin.router):
     app.include_router(r, prefix="/api")
 
 
@@ -47,6 +49,7 @@ def health():
     conn = app.state.conn
     return {
         "ok": True,
+        "has_users": conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0,
         "index_ready": dbm.index_ready(conn),
         "built_at": dbm.get_meta(conn, "built_at"),
         "semantic": app.state.engine.semantic_available,

@@ -10,13 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import db as dbm
 from ..config import TALKS_JSON, SCRIPTURES_JSON, CHUNKS_NPY
-from ..deps import get_conn
+from ..deps import get_admin, get_conn
 
 router = APIRouter(tags=["admin"])
 
 
 @router.get("/admin/index/status")
-def index_status(request: Request, conn=Depends(get_conn)):
+def index_status(request: Request, conn=Depends(get_conn), _admin=Depends(get_admin)):
     job = request.app.state.index_job
     stats = dbm.get_meta(conn, "stats")
     return {
@@ -34,7 +34,7 @@ def index_status(request: Request, conn=Depends(get_conn)):
 
 
 @router.post("/admin/index/rebuild")
-def rebuild(request: Request, skip_embeddings: bool = False):
+def rebuild(request: Request, skip_embeddings: bool = False, _admin=Depends(get_admin)):
     app = request.app
     if app.state.index_job and app.state.index_job.get("running"):
         raise HTTPException(409, "an index build is already running")

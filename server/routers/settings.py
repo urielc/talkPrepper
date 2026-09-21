@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..config import SETTINGS_DEFAULTS, SECRET_SETTINGS
-from ..deps import get_conn
+from ..deps import get_admin, get_conn, get_user
 from ..mailer import send_html, MailConfigError, email_ready, missing_email_setup
 from ..settings import get_settings, set_settings, public_settings
 
@@ -22,8 +22,22 @@ class TestEmailBody(BaseModel):
     to: str = Field(min_length=3)
 
 
+@router.get("/ai-status")
+def ai_status(conn=Depends(get_conn), _user=Depends(get_user)):
+    """Whether the AI assistant is usable; safe for non-admins (no secrets)."""
+    s = get_settings(conn)
+    prov = s.get("ai_provider") or "anthropic"
+    if prov == "anthropic":
+        out = {"configured": bool(s.get("anthropic_api_key")), "provider": prov, "label": f"Claude ({s.get('anthropic_model')})"}
+    else:
+        out = {"configured": bool(s.get("ollama_model")), "provider": prov, "label": f"Ollama ({s.get('ollama_model') or 'no model'})"}
+    out["email_ready"] = email_ready(s)
+    out["email_missing"] = missing_email_setup(s)
+    return out
+
+
 @router.get("/settings")
-def read_settings(conn=Depends(get_conn)):
+def read_settings(conn=Depends(get_conn), _admin=Depends(get_admin)):
     out = public_settings(conn)
     s = get_settings(conn)
     out["email_ready"] = email_ready(s)
@@ -32,7 +46,7 @@ def read_settings(conn=Depends(get_conn)):
 
 
 @router.put("/settings")
-def write_settings(body: SettingsBody, conn=Depends(get_conn)):
+def write_settings(body: SettingsBody, conn=Depends(get_conn), _admin=Depends(get_admin)):
     clean = {}
     for k, v in body.values.items():
         if k not in SETTINGS_DEFAULTS:
@@ -48,7 +62,7 @@ def write_settings(body: SettingsBody, conn=Depends(get_conn)):
 
 
 @router.post("/settings/test-ai")
-def test_ai(conn=Depends(get_conn)):
+def test_ai(conn=Depends(get_conn), _admin=Depends(get_admin)):
     from ..ai import get_provider
     settings = get_settings(conn)
     try:
@@ -60,7 +74,7 @@ def test_ai(conn=Depends(get_conn)):
 
 
 @router.get("/settings/ollama/models")
-def ollama_models(conn=Depends(get_conn)):
+def ollama_models(conn=Depends(get_conn), _admin=Depends(get_admin)):
     settings = get_settings(conn)
     base = (settings.get("ollama_base_url") or "").rstrip("/")
     try:
@@ -72,7 +86,7 @@ def ollama_models(conn=Depends(get_conn)):
 
 
 @router.post("/settings/test-email")
-def test_email(body: TestEmailBody, conn=Depends(get_conn)):
+def test_email(body: TestEmailBody, conn=Depends(get_conn), _admin=Depends(get_admin)):
     settings = get_settings(conn)
     try:
         info = send_html(settings, [body.to], "Lesson Prep: test email",

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from ..deps import get_conn
+from ..deps import get_conn, get_user
 from ..mailer import send_html, MailConfigError, email_ready, missing_email_setup
 from ..scriptures import get_verses, format_ref
 from ..settings import get_settings
@@ -48,8 +48,8 @@ class EmailBody(BaseModel):
     subject: str | None = None
 
 
-def ensure_lesson(conn: sqlite3.Connection, talk_id: str) -> None:
-    conn.execute("INSERT OR IGNORE INTO lessons(talk_id) VALUES(?)", (talk_id,))
+def ensure_lesson(conn: sqlite3.Connection, uid: int, talk_id: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO lessons(user_id, talk_id) VALUES(?, ?)", (uid, talk_id))
 
 
 def pin_to_dict(r: sqlite3.Row, talks: dict[str, dict]) -> dict:
@@ -58,19 +58,19 @@ def pin_to_dict(r: sqlite3.Row, talks: dict[str, dict]) -> dict:
     return d
 
 
-def load_pins(conn: sqlite3.Connection, talk_id: str) -> list[dict]:
-    rows = conn.execute("SELECT * FROM pins WHERE talk_id=? ORDER BY ord, id", (talk_id,)).fetchall()
+def load_pins(conn: sqlite3.Connection, uid: int, talk_id: str) -> list[dict]:
+    rows = conn.execute("SELECT * FROM pins WHERE user_id=? AND talk_id=? ORDER BY ord, id", (uid, talk_id)).fetchall()
     talks = fetch_talks(conn, [r["ref_talk_id"] for r in rows if r["ref_talk_id"]])
     return [pin_to_dict(r, talks) for r in rows]
 
 
 @router.get("/lessons")
-def list_lessons(conn=Depends(get_conn)):
+def list_lessons(conn=Depends(get_conn), user=Depends(get_user)):
     rows = conn.execute(
         "SELECT l.talk_id, l.updated_at, LENGTH(l.notes_md) AS notes_len, "
-        "(SELECT COUNT(*) FROM pins p WHERE p.talk_id=l.talk_id) AS pin_count, "
-        "(SELECT COUNT(*) FROM chat_sessions s WHERE s.talk_id=l.talk_id) AS chat_count "
-        "FROM lessons l ORDER BY l.updated_at DESC LIMIT 50").fetchall()
+        "(SELECT COUNT(*) FROM pins p WHERE p.talk_id=l.talk_id AND p.user_id=l.user_id) AS pin_count, "
+        "(SELECT COUNT(*) FROM chat_sessions s WHERE s.talk_id=l.talk_id AND s.user_id=l.user_id) AS chat_count "
+        "FROM lessons l WHERE l.user_id=? ORDER BY l.updated_at DESC LIMIT 50", (user["id"],)).fetchall()
     talks = fetch_talks(conn, [r["talk_id"] for r in rows])
     out = []
     for r in rows:
@@ -82,22 +82,22 @@ def list_lessons(conn=Depends(get_conn)):
 
 
 @router.get("/lessons/{talk_id:path}/export.html", response_class=HTMLResponse)
-def export_html(talk_id: str, sections: str | None = None, conn=Depends(get_conn)):
+def export_html(talk_id: str, sections: str | None = None, conn=Depends(get_conn), user=Depends(get_user)):
     """Printable lesson sheet. ``sections`` is a comma list drawn from
     notes, essence, points, quotes, questions, pins; omitted means everything."""
     chosen = [x.strip() for x in sections.split(",") if x.strip()] if sections else None
-    return HTMLResponse(render_export(conn, talk_id, chosen))
+    return HTMLResponse(render_export(conn, user["id"], talk_id, chosen))
 
 
 @router.post("/lessons/{talk_id:path}/email")
-def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn)):
+def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn), user=Depends(get_user)):
     talk = talk_row_to_dict(get_talk_or_404(conn, talk_id))
     settings = get_settings(conn)
     if not email_ready(settings):
         raise HTTPException(400, "Email is not configured. " + missing_email_setup(settings))
     subject = body.subject or f"Lesson prep: {talk['title']} ({talk['speaker']})"
     try:
-        info = send_html(settings, body.to, subject, render_export(conn, talk_id))
+        info = send_html(settings, body.to, subject, render_export(conn, user["id"], talk_id))
     except MailConfigError as e:
         raise HTTPException(400, str(e))
     except Exception as e:  # network / smtplib errors
@@ -106,37 +106,41 @@ def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn)):
 
 
 @router.post("/lessons/{talk_id:path}/pins/reorder")
-def reorder_pins(talk_id: str, body: ReorderBody, conn=Depends(get_conn)):
+def reorder_pins(talk_id: str, body: ReorderBody, conn=Depends(get_conn), user=Depends(get_user)):
+    uid = user["id"]
     for i, pid in enumerate(body.ids):
-        conn.execute("UPDATE pins SET ord=? WHERE id=? AND talk_id=?", (i, pid, talk_id))
-    touch(conn, talk_id)
-    return load_pins(conn, talk_id)
+        conn.execute("UPDATE pins SET ord=? WHERE id=? AND talk_id=? AND user_id=?", (i, pid, talk_id, uid))
+    touch(conn, uid, talk_id)
+    return load_pins(conn, uid, talk_id)
 
 
 @router.patch("/lessons/{talk_id:path}/pins/{pin_id}")
-def patch_pin(talk_id: str, pin_id: int, body: PinPatch, conn=Depends(get_conn)):
-    row = conn.execute("SELECT id FROM pins WHERE id=? AND talk_id=?", (pin_id, talk_id)).fetchone()
+def patch_pin(talk_id: str, pin_id: int, body: PinPatch, conn=Depends(get_conn), user=Depends(get_user)):
+    uid = user["id"]
+    row = conn.execute("SELECT id FROM pins WHERE id=? AND talk_id=? AND user_id=?", (pin_id, talk_id, uid)).fetchone()
     if not row:
         raise HTTPException(404, "pin not found")
     if body.text is not None:
         conn.execute("UPDATE pins SET text=? WHERE id=?", (body.text, pin_id))
     if body.note is not None:
         conn.execute("UPDATE pins SET note=? WHERE id=?", (body.note, pin_id))
-    touch(conn, talk_id)
-    return load_pins(conn, talk_id)
+    touch(conn, uid, talk_id)
+    return load_pins(conn, uid, talk_id)
 
 
 @router.delete("/lessons/{talk_id:path}/pins/{pin_id}")
-def delete_pin(talk_id: str, pin_id: int, conn=Depends(get_conn)):
-    conn.execute("DELETE FROM pins WHERE id=? AND talk_id=?", (pin_id, talk_id))
-    touch(conn, talk_id)
-    return load_pins(conn, talk_id)
+def delete_pin(talk_id: str, pin_id: int, conn=Depends(get_conn), user=Depends(get_user)):
+    uid = user["id"]
+    conn.execute("DELETE FROM pins WHERE id=? AND talk_id=? AND user_id=?", (pin_id, talk_id, uid))
+    touch(conn, uid, talk_id)
+    return load_pins(conn, uid, talk_id)
 
 
 @router.post("/lessons/{talk_id:path}/pins")
-def add_pin(talk_id: str, body: PinBody, conn=Depends(get_conn)):
+def add_pin(talk_id: str, body: PinBody, conn=Depends(get_conn), user=Depends(get_user)):
+    uid = user["id"]
     get_talk_or_404(conn, talk_id)
-    ensure_lesson(conn, talk_id)
+    ensure_lesson(conn, uid, talk_id)
     text = body.text
     if body.kind == "scripture":
         if not body.scripture_ref:
@@ -155,39 +159,46 @@ def add_pin(talk_id: str, body: PinBody, conn=Depends(get_conn)):
             text = row["text"] if row else ""
     elif body.kind == "note" and not text:
         raise HTTPException(400, "text required for a note pin")
-    ord_ = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM pins WHERE talk_id=?", (talk_id,)).fetchone()[0]
+    ord_ = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM pins WHERE talk_id=? AND user_id=?",
+                        (talk_id, uid)).fetchone()[0]
     conn.execute(
-        "INSERT INTO pins(talk_id, kind, ref_talk_id, ref_paragraph_id, scripture_ref, text, note, ord) "
-        "VALUES(?,?,?,?,?,?,?,?)",
-        (talk_id, body.kind, body.ref_talk_id, body.ref_paragraph_id, body.scripture_ref, text, body.note, ord_))
-    touch(conn, talk_id)
-    return load_pins(conn, talk_id)
+        "INSERT INTO pins(user_id, talk_id, kind, ref_talk_id, ref_paragraph_id, scripture_ref, text, note, ord) "
+        "VALUES(?,?,?,?,?,?,?,?,?)",
+        (uid, talk_id, body.kind, body.ref_talk_id, body.ref_paragraph_id, body.scripture_ref, text, body.note, ord_))
+    touch(conn, uid, talk_id)
+    return load_pins(conn, uid, talk_id)
 
 
-@router.get("/lessons/{talk_id:path}")
-def get_lesson(talk_id: str, conn=Depends(get_conn)):
-    row = conn.execute("SELECT notes_md, updated_at FROM lessons WHERE talk_id=?", (talk_id,)).fetchone()
+def lesson_for(conn: sqlite3.Connection, uid: int, talk_id: str) -> dict:
+    row = conn.execute("SELECT notes_md, updated_at FROM lessons WHERE user_id=? AND talk_id=?",
+                       (uid, talk_id)).fetchone()
     return {
         "talk_id": talk_id,
         "notes_md": row["notes_md"] if row else "",
         "updated_at": row["updated_at"] if row else None,
-        "pins": load_pins(conn, talk_id),
+        "pins": load_pins(conn, uid, talk_id),
     }
 
 
+@router.get("/lessons/{talk_id:path}")
+def get_lesson(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
+    return lesson_for(conn, user["id"], talk_id)
+
+
 @router.put("/lessons/{talk_id:path}")
-def put_notes(talk_id: str, body: NotesBody, conn=Depends(get_conn)):
+def put_notes(talk_id: str, body: NotesBody, conn=Depends(get_conn), user=Depends(get_user)):
+    uid = user["id"]
     get_talk_or_404(conn, talk_id)
-    ensure_lesson(conn, talk_id)
-    conn.execute("UPDATE lessons SET notes_md=?, updated_at=datetime('now') WHERE talk_id=?",
-                 (body.notes_md, talk_id))
+    ensure_lesson(conn, uid, talk_id)
+    conn.execute("UPDATE lessons SET notes_md=?, updated_at=datetime('now') WHERE user_id=? AND talk_id=?",
+                 (body.notes_md, uid, talk_id))
     conn.commit()
-    return get_lesson(talk_id, conn)
+    return lesson_for(conn, uid, talk_id)
 
 
-def touch(conn: sqlite3.Connection, talk_id: str) -> None:
-    ensure_lesson(conn, talk_id)
-    conn.execute("UPDATE lessons SET updated_at=datetime('now') WHERE talk_id=?", (talk_id,))
+def touch(conn: sqlite3.Connection, uid: int, talk_id: str) -> None:
+    ensure_lesson(conn, uid, talk_id)
+    conn.execute("UPDATE lessons SET updated_at=datetime('now') WHERE user_id=? AND talk_id=?", (uid, talk_id))
     conn.commit()
 
 
@@ -260,11 +271,11 @@ def render_digest_sections(digest: dict | None, chosen: list[str]) -> str:
     return "".join(out)
 
 
-def render_export(conn: sqlite3.Connection, talk_id: str, sections: list[str] | None = None) -> str:
+def render_export(conn: sqlite3.Connection, uid: int, talk_id: str, sections: list[str] | None = None) -> str:
     from ..ai.digest import load_digest
     chosen = [x for x in (sections or ALL_SECTIONS) if x in ALL_SECTIONS] or ALL_SECTIONS
     talk = talk_row_to_dict(get_talk_or_404(conn, talk_id))
-    lesson = get_lesson(talk_id, conn)
+    lesson = lesson_for(conn, uid, talk_id)
     digest_html = render_digest_sections(load_digest(conn, talk_id), chosen)
     esc = html.escape
     notes_html = markdown.markdown(lesson["notes_md"] or "", extensions=["extra", "sane_lists"]) \

@@ -14,7 +14,7 @@ from ..ai import get_provider
 from ..ai.base import ChatEvent, ProviderError
 from ..ai.prompts import build_system
 from ..ai.tools import TOOLS, ToolContext
-from ..deps import get_conn, get_engine
+from ..deps import get_conn, get_engine, get_user
 from ..settings import get_settings
 from .talks import talk_detail
 
@@ -55,25 +55,26 @@ def load_history(conn: sqlite3.Connection, session_id: int) -> list[dict]:
 
 
 @router.post("/chat")
-def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depends(get_engine)):
+def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depends(get_engine), user=Depends(get_user)):
+    uid = user["id"]
     settings = get_settings(conn)
     try:
         provider = get_provider(settings)
     except ProviderError as e:
         raise HTTPException(400, str(e))
-    talk = talk_detail(body.talk_id, conn)  # 404s if missing
+    talk = talk_detail(body.talk_id, conn, user)  # 404s if missing
     system = build_system(talk, talk["paragraphs"])
 
     if body.session_id:
-        row = conn.execute("SELECT id FROM chat_sessions WHERE id=? AND talk_id=?",
-                           (body.session_id, body.talk_id)).fetchone()
+        row = conn.execute("SELECT id FROM chat_sessions WHERE id=? AND talk_id=? AND user_id=?",
+                           (body.session_id, body.talk_id, uid)).fetchone()
         if not row:
             raise HTTPException(404, "session not found")
         session_id = body.session_id
     else:
         title = body.message.strip().split("\n")[0][:80]
-        cur = conn.execute("INSERT INTO chat_sessions(talk_id, title, provider, model) VALUES(?,?,?,?)",
-                           (body.talk_id, title, provider.name, provider.model))
+        cur = conn.execute("INSERT INTO chat_sessions(user_id, talk_id, title, provider, model) VALUES(?,?,?,?,?)",
+                           (uid, body.talk_id, title, provider.name, provider.model))
         session_id = cur.lastrowid
         conn.commit()
 
@@ -131,16 +132,16 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
 
 
 @router.get("/chat/sessions")
-def list_sessions(talk_id: str, conn=Depends(get_conn)):
+def list_sessions(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
     rows = conn.execute(
         "SELECT s.*, (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id=s.id) AS message_count "
-        "FROM chat_sessions s WHERE talk_id=? ORDER BY updated_at DESC", (talk_id,)).fetchall()
+        "FROM chat_sessions s WHERE talk_id=? AND user_id=? ORDER BY updated_at DESC", (talk_id, user["id"])).fetchall()
     return [dict(r) for r in rows]
 
 
 @router.get("/chat/sessions/{session_id}")
-def get_session(session_id: int, conn=Depends(get_conn)):
-    s = conn.execute("SELECT * FROM chat_sessions WHERE id=?", (session_id,)).fetchone()
+def get_session(session_id: int, conn=Depends(get_conn), user=Depends(get_user)):
+    s = conn.execute("SELECT * FROM chat_sessions WHERE id=? AND user_id=?", (session_id, user["id"])).fetchone()
     if not s:
         raise HTTPException(404, "session not found")
     msgs = [{"id": r["id"], "role": r["role"], "blocks": json.loads(r["content_json"]),
@@ -150,7 +151,10 @@ def get_session(session_id: int, conn=Depends(get_conn)):
 
 
 @router.delete("/chat/sessions/{session_id}")
-def delete_session(session_id: int, conn=Depends(get_conn)):
+def delete_session(session_id: int, conn=Depends(get_conn), user=Depends(get_user)):
+    own = conn.execute("SELECT id FROM chat_sessions WHERE id=? AND user_id=?", (session_id, user["id"])).fetchone()
+    if not own:
+        raise HTTPException(404, "session not found")
     conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session_id,))
     conn.execute("DELETE FROM chat_sessions WHERE id=?", (session_id,))
     conn.commit()

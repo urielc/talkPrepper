@@ -42,7 +42,19 @@ To use it from a phone or another computer on the same network:
 make serve-lan      # binds 0.0.0.0:8765; open http://<this machine's IP>:8765 on the other device
 ```
 
-The firewall must allow TCP 8765 (Fedora's default workstation zone already allows 1025–65535; otherwise `sudo firewall-cmd --add-port=8765/tcp --permanent && sudo firewall-cmd --reload`). There is no login: anyone on the network who can reach the port can read talks, change settings (including the AI key and email token) and send email. Keep it on trusted networks, and add authentication before exposing it beyond your LAN.
+The firewall must allow TCP 8765 (Fedora's default workstation zone already allows 1025–65535; otherwise `sudo firewall-cmd --add-port=8765/tcp --permanent && sudo firewall-cmd --reload`).
+
+## Accounts
+
+Everything except the health endpoint requires a signed-in user. Accounts are invitation-only:
+
+```bash
+python -m server.cli migrate --admin-email you@example.com --name "Your Name"   # first admin; prints a set-password link
+```
+
+Admins invite others from **Users** in the account menu; each person receives a set-password link by email (Postmark or SMTP, configured in Settings) or, if email is not set up, the admin gets the link to pass on. Notes, pins, chat sessions and the "My lessons" list are per user; talk digests are shared. Settings and Users are admin-only.
+
+Environment variables for a server deployment (all optional locally): `LP_DATA_DIR` (data directory outside the clone), `LP_BASE_URL` (used in emailed links), `LP_COOKIE_SECURE=1` (behind HTTPS), `LP_TRUST_PROXY=1` (read `X-Forwarded-For` behind nginx).
 
 Open Settings in the app to enter an Anthropic API key (or pick an Ollama model) and, optionally, email details for sending your notes: a Postmark server token plus a verified sender address (default), or any SMTP server. Settings live in `data/app.db`, not in environment files.
 

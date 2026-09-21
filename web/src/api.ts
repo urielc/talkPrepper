@@ -58,7 +58,7 @@ export interface TalkDetail extends TalkSummary {
   cited_by: TalkSummary[]
   prev: TalkSummary | null
   next: TalkSummary | null
-  lesson: { has_notes: boolean; pin_count: number }
+  lesson: { has_notes: boolean; pin_count: number; mine: boolean }
 }
 
 export interface Hit {
@@ -151,6 +151,30 @@ export interface Digest {
   questions: { question: string; kind: 'opening' | 'discussion' | 'application'; note: string }[]
 }
 
+export interface User {
+  id: number
+  email: string
+  name: string
+  is_admin: boolean
+  disabled: boolean
+  has_password: boolean
+  created_at: string
+  last_login_at: string | null
+}
+
+export interface AdminUser extends User {
+  invite_pending: boolean
+}
+
+export interface MyLesson {
+  talk: TalkSummary
+  added_at: string
+  notes_len: number
+  pin_count: number
+  has_digest: boolean
+  updated_at: string | null
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -159,11 +183,19 @@ export class ApiError extends Error {
   }
 }
 
+/** Called on any 401 from a non-auth endpoint; the auth store installs a redirect to /login. */
+export let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
   })
+  if (res.status === 401 && !path.startsWith('/auth/') && onUnauthorized) onUnauthorized()
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -186,7 +218,7 @@ const patch = <T>(path: string, body: unknown) => request<T>(path, { method: 'PA
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
 
 export const api = {
-  health: () => get<{ ok: boolean; index_ready: boolean; built_at: string | null; semantic: boolean }>('/health'),
+  health: () => get<{ ok: boolean; has_users: boolean; index_ready: boolean; built_at: string | null; semantic: boolean }>('/health'),
   conferences: () => get<Conference[]>('/conferences'),
   conferenceTalks: (id: string) => get<TalkSummary[]>(`/conferences/${id}/talks`),
   talks: (q: string, conference?: string, limit = 50) =>
@@ -218,9 +250,23 @@ export const api = {
   generateDigest: (id: string) => post<Digest>(`/talks/${id}/digest`),
   deleteDigest: (id: string) => del<{ ok: boolean }>(`/talks/${id}/digest`),
 
-  currentTalk: () => get<{ talk_id: string | null; talk: TalkSummary | null }>('/current-talk'),
-  setCurrentTalk: (talk_id: string | null) =>
-    put<{ talk_id: string | null; talk: TalkSummary | null }>('/current-talk', { talk_id }),
+  myLessons: () => get<MyLesson[]>('/my-lessons'),
+  addMyLesson: (talk_id: string) => put<MyLesson[]>('/my-lessons', { talk_id }),
+  removeMyLesson: (talk_id: string) => del<MyLesson[]>(`/my-lessons/${talk_id}`),
+  reorderMyLessons: (talk_ids: string[]) => post<MyLesson[]>('/my-lessons/reorder', { talk_ids }),
+
+  me: () => get<User>('/auth/me'),
+  login: (email: string, password: string) => post<User>('/auth/login', { email, password }),
+  logout: () => post<{ ok: boolean }>('/auth/logout'),
+  setPassword: (token: string, password: string) => post<User>('/auth/set-password', { token, password }),
+  forgot: (email: string) => post<{ ok: boolean }>('/auth/forgot', { email }),
+
+  users: () => get<AdminUser[]>('/users'),
+  inviteUser: (email: string, name: string, is_admin: boolean) =>
+    post<{ user: User; emailed: boolean; link?: string; reason?: string }>('/users', { email, name, is_admin }),
+  resendInvite: (id: number) => post<{ emailed: boolean; link?: string; reason?: string }>(`/users/${id}/invite`),
+  patchUser: (id: number, body: { name?: string; is_admin?: boolean; disabled?: boolean }) =>
+    patch<AdminUser[]>(`/users/${id}`, body),
 
   lessons: () =>
     get<{ talk: TalkSummary; updated_at: string; notes_len: number; pin_count: number; chat_count: number }[]>('/lessons'),
@@ -236,6 +282,7 @@ export const api = {
   exportUrl: (talkId: string, sections?: string[]) =>
     `/api/lessons/${talkId}/export.html${sections?.length ? `?sections=${sections.join(',')}` : ''}`,
 
+  aiStatus: () => get<{ configured: boolean; provider: string; label: string; email_ready: boolean; email_missing: string }>('/ai-status'),
   settings: () => get<Record<string, string | boolean>>('/settings'),
   saveSettings: (values: Record<string, string>) => put<Record<string, string | boolean>>('/settings', { values }),
   testAi: () => post<{ ok: boolean; provider: string; model: string; display_name?: string }>('/settings/test-ai'),

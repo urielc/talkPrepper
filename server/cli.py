@@ -2,6 +2,7 @@
 
     python -m server.cli download-scriptures
     python -m server.cli index [--skip-embeddings] [--talks PATH]
+    python -m server.cli migrate [--admin-email EMAIL [--password PW]]
     python -m server.cli serve [--host 127.0.0.1] [--port 8765] [--reload]
 """
 
@@ -44,6 +45,22 @@ def cmd_index(args: argparse.Namespace) -> None:
         print(f"{k:20s} {v}")
 
 
+def cmd_migrate(args: argparse.Namespace) -> None:
+    from .migrate import apply_schema, create_admin
+    from .config import BASE_URL
+    conn = dbm.connect()
+    for step in apply_schema(conn):
+        print("  migrated:", step)
+    if args.admin_email:
+        user, token = create_admin(conn, args.admin_email, name=args.name or "", password=args.password)
+        print(f"admin created: {user['email']} (id {user['id']})")
+        if token:
+            base = BASE_URL.rstrip("/") or "http://127.0.0.1:8765"
+            print(f"set a password at: {base}/set-password?token={token}  (valid 72 h)")
+    n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    print(f"users: {n}")
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
     uvicorn.run("server.main:app", host=args.host, port=args.port, reload=args.reload)
@@ -62,6 +79,12 @@ def main(argv: list[str] | None = None) -> None:
     i.add_argument("--model", default=DEFAULT_EMBEDDING_MODEL)
     i.add_argument("--skip-embeddings", action="store_true")
     i.set_defaults(fn=cmd_index)
+
+    m = sub.add_parser("migrate", help="upgrade the database; optionally create the first admin")
+    m.add_argument("--admin-email")
+    m.add_argument("--name")
+    m.add_argument("--password", help="set directly instead of emailing/printing an invite link")
+    m.set_defaults(fn=cmd_migrate)
 
     s = sub.add_parser("serve", help="run the API + web app")
     s.add_argument("--host", default="127.0.0.1")

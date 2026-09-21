@@ -3,11 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api, type Digest, type TalkDetail } from '../api'
 import { useLessonStore } from '../stores/lesson'
+import { useAuthStore } from '../stores/auth'
 
 const props = defineProps<{ talk: TalkDetail }>()
 const emit = defineEmits<{ (e: 'goto', paragraphIdx: number): void; (e: 'ask', text: string): void }>()
 
 const lesson = useLessonStore()
+const auth = useAuthStore()
 const digest = ref<Digest | null>(null)
 const loading = ref(false)
 const generating = ref(false)
@@ -21,10 +23,9 @@ watch(
     error.value = null
     loading.value = true
     try {
-      const [d, s] = await Promise.all([api.digest(id), api.settings()])
+      const [d, s] = await Promise.all([api.digest(id), api.aiStatus()])
       digest.value = d
-      const prov = String(s.ai_provider)
-      configured.value = prov === 'anthropic' ? Boolean(s.anthropic_api_key_set) : Boolean(s.ollama_model)
+      configured.value = s.configured
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -85,7 +86,10 @@ const grouped = computed(() => {
         discussion questions for the quorum. It is created once and kept with the talk.
       </p>
       <div v-if="configured === false" class="notice">
-        This needs an AI provider. Add an Anthropic API key or an Ollama model in <RouterLink to="/settings">Settings</RouterLink>.
+        <template v-if="auth.user?.is_admin">
+          This needs an AI provider. Add an Anthropic API key or an Ollama model in <RouterLink to="/settings">Settings</RouterLink>.
+        </template>
+        <template v-else>The AI assistant is not set up yet. Ask the administrator.</template>
       </div>
       <button v-else class="primary" :disabled="generating" @click="generate">
         {{ generating ? 'Reading the talk…' : 'Generate digest' }}

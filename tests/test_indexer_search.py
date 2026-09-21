@@ -105,12 +105,13 @@ def conn():
 
 def test_export_html_renders_notes_and_pins(conn):
     from server.routers.lessons import render_export
-    conn.execute("INSERT INTO lessons(talk_id, notes_md) VALUES('2026-04/a', '# Outline\n\n- point **one**')")
-    conn.execute("INSERT INTO pins(talk_id, kind, scripture_ref, text, note, ord) VALUES('2026-04/a','scripture','Alma 32:21','21 And now…','why',0)")
-    conn.execute("INSERT INTO pins(talk_id, kind, ref_talk_id, ref_paragraph_id, text, ord) VALUES('2026-04/a','quote','2026-04/b',1,'A <quote>',1)")
-    conn.execute("INSERT INTO pins(talk_id, kind, text, ord) VALUES('2026-04/a','note','free text',2)")
+    conn.execute("INSERT INTO users(id, email) VALUES(1, 'a@example.com')")
+    conn.execute("INSERT INTO lessons(user_id, talk_id, notes_md) VALUES(1, '2026-04/a', '# Outline\n\n- point **one**')")
+    conn.execute("INSERT INTO pins(user_id, talk_id, kind, scripture_ref, text, note, ord) VALUES(1,'2026-04/a','scripture','Alma 32:21','21 And now…','why',0)")
+    conn.execute("INSERT INTO pins(user_id, talk_id, kind, ref_talk_id, ref_paragraph_id, text, ord) VALUES(1,'2026-04/a','quote','2026-04/b',1,'A <quote>',1)")
+    conn.execute("INSERT INTO pins(user_id, talk_id, kind, text, ord) VALUES(1,'2026-04/a','note','free text',2)")
     conn.commit()
-    html = render_export(conn, "2026-04/a")
+    html = render_export(conn, 1, "2026-04/a")
     assert "<h1>Talk A</h1>" in html
     assert "<strong>one</strong>" in html
     assert "Alma 32:21" in html and "why" in html

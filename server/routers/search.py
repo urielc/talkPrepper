@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from ..deps import get_conn, get_engine
+from ..deps import get_conn, get_engine, get_user
 from ..search import SearchEngine, fts_query
 from ..scriptures import search_verses
 from .talks import fetch_talks
@@ -26,7 +26,7 @@ class SearchRequest(BaseModel):
 
 
 @router.post("/search")
-def search(req: SearchRequest, conn=Depends(get_conn), engine: SearchEngine = Depends(get_engine)):
+def search(req: SearchRequest, conn=Depends(get_conn), engine: SearchEngine = Depends(get_engine), _user=Depends(get_user)):
     hits = engine.search(req.q, req.mode, req.limit, req.years, req.speaker, req.conference)
     talks = fetch_talks(conn, [h.talk_id for h in hits])
     results = []

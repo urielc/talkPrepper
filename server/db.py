@@ -4,14 +4,15 @@ Two groups of tables live in one database file:
 
 * Index tables (conferences, talks, paragraphs, refs, chunks, scriptures and
   their FTS mirrors) are rebuilt from scratch by the indexer.
-* User tables (settings, lessons, pins, chat_*) are created once and never
-  dropped by the indexer.
+* User tables (users, sessions, invites, working_on, settings, lessons, pins,
+  digests, chat_*) are created once and never dropped by the indexer.
 """
 
 from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 from .config import DB_PATH, DATA_DIR
@@ -128,15 +129,53 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL DEFAULT '',
+    password_hash TEXT,                       -- NULL until the invite is accepted
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    disabled      INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    user_agent TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS invites (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    used_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS working_on (
+    user_id  INTEGER,                        -- NULL only for rows migrated before accounts existed
+    talk_id  TEXT NOT NULL,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    ord      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, talk_id)
+);
+
 CREATE TABLE IF NOT EXISTS lessons (
-    talk_id    TEXT PRIMARY KEY,
+    user_id    INTEGER,
+    talk_id    TEXT NOT NULL,
     notes_md   TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, talk_id)
 );
 
 CREATE TABLE IF NOT EXISTS pins (
     id               INTEGER PRIMARY KEY,
+    user_id          INTEGER,
     talk_id          TEXT NOT NULL,           -- the lesson this pin belongs to
     kind             TEXT NOT NULL,           -- 'talk' | 'scripture' | 'quote'
     ref_talk_id      TEXT,
@@ -159,6 +198,7 @@ CREATE TABLE IF NOT EXISTS digests (
 
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id         INTEGER PRIMARY KEY,
+    user_id    INTEGER,
     talk_id    TEXT NOT NULL,
     title      TEXT NOT NULL DEFAULT '',
     provider   TEXT NOT NULL DEFAULT '',
@@ -179,8 +219,10 @@ CREATE INDEX IF NOT EXISTS chat_messages_session ON chat_messages(session_id, id
 """
 
 
-def connect(path=DB_PATH) -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+def connect(path=None) -> sqlite3.Connection:
+    """Open the app database (default: DB_PATH, resolved at call time so tests can redirect it)."""
+    path = path or DB_PATH
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

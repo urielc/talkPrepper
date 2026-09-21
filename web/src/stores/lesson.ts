@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type Lesson, type Pin, type TalkSummary } from '../api'
+import { api, type Lesson, type MyLesson, type Pin } from '../api'
 import { useUiStore } from './ui'
 
 export const useLessonStore = defineStore('lesson', () => {
@@ -11,19 +11,33 @@ export const useLessonStore = defineStore('lesson', () => {
   const saving = ref(false)
   const savedAt = ref<string | null>(null)
 
-  // The lesson being prepared right now (one per app, stored server-side)
-  const current = ref<TalkSummary | null>(null)
-  const currentLoaded = ref(false)
-  async function loadCurrent() {
+  // Talks this user is working on (shown on the landing page and in the top bar)
+  const mine = ref<MyLesson[]>([])
+  const mineLoaded = ref(false)
+  async function loadMine() {
     try {
-      current.value = (await api.currentTalk()).talk
+      mine.value = await api.myLessons()
     } finally {
-      currentLoaded.value = true
+      mineLoaded.value = true
     }
   }
-  async function setCurrent(id: string | null) {
-    current.value = (await api.setCurrentTalk(id)).talk
-    ui().toast(id ? 'Marked as your current lesson' : 'Current lesson cleared', 'ok', 1800)
+  function isMine(id: string): boolean {
+    return mine.value.some((m) => m.talk.id === id)
+  }
+  async function addMine(id: string) {
+    mine.value = await api.addMyLesson(id)
+    ui().toast('Added to my lessons', 'ok', 1800)
+  }
+  async function removeMine(id: string) {
+    mine.value = await api.removeMyLesson(id)
+    ui().toast('Removed from my lessons', 'ok', 1800)
+  }
+  function reset() {
+    talkId.value = null
+    notes.value = ''
+    pins.value = []
+    mine.value = []
+    mineLoaded.value = false
   }
 
   async function load(id: string) {
@@ -92,5 +106,5 @@ export const useLessonStore = defineStore('lesson', () => {
     pins.value = await api.reorderPins(talkId.value, ids)
   }
 
-  return { talkId, notes, pins, loading, saving, savedAt, current, currentLoaded, loadCurrent, setCurrent, load, setNotes, saveNotes, addPin, hasPin, patchPin, removePin, reorder }
+  return { talkId, notes, pins, loading, saving, savedAt, mine, mineLoaded, loadMine, isMine, addMine, removeMine, reset, load, setNotes, saveNotes, addPin, hasPin, patchPin, removePin, reorder }
 })
