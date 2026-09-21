@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth import (
-    _DUMMY_HASH, _buckets, client_ip, consume_invite, create_session, destroy_session, get_user_by_email,
-    hash_password, issue_invite, rate_limit, user_to_dict, verify_password,
+    _DUMMY_HASH, _buckets, _hash_token, client_ip, consume_invite, create_session, destroy_session,
+    get_user_by_email, hash_password, issue_invite, rate_limit, user_to_dict, verify_password,
 )
-from ..config import BASE_URL
+from ..config import BASE_URL, COOKIE_NAME
 from ..deps import get_conn, get_user
 from ..log import event, hash_email, security
 from ..mailer import email_ready, send_html
@@ -30,6 +30,11 @@ class SetPasswordBody(BaseModel):
 
 class ForgotBody(BaseModel):
     email: str = Field(min_length=3, max_length=200)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 @router.post("/auth/login")
@@ -72,6 +77,23 @@ def set_password(body: SetPasswordBody, request: Request, response: Response, co
     event("setpassword.ok", user_id=user["id"])
     create_session(conn, response, user["id"], request.headers.get("user-agent", ""))
     return user_to_dict(conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone())
+
+
+@router.post("/auth/change-password")
+def change_password(body: ChangePasswordBody, request: Request, conn=Depends(get_conn), user=Depends(get_user)):
+    """Signed-in password change. Requires the current password; signs out every
+    other device but keeps the session that made the change."""
+    rate_limit(f"changepw:{user['id']}", limit=5, window_s=900)
+    if not verify_password(body.current_password, user["password_hash"]):
+        event("changepw.fail", user_id=user["id"], ip=client_ip(request))
+        raise HTTPException(400, "The current password is incorrect.")
+    new_hash = hash_password(body.new_password)  # enforces the minimum length
+    current = request.cookies.get(COOKIE_NAME, "")
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user["id"]))
+    conn.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (user["id"], _hash_token(current)))
+    conn.commit()
+    event("changepw.ok", user_id=user["id"])
+    return {"ok": True}
 
 
 @router.post("/auth/forgot")

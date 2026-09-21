@@ -260,6 +260,8 @@ export const api = {
   logout: () => post<{ ok: boolean }>('/auth/logout'),
   setPassword: (token: string, password: string) => post<User>('/auth/set-password', { token, password }),
   forgot: (email: string) => post<{ ok: boolean }>('/auth/forgot', { email }),
+  changePassword: (current_password: string, new_password: string) =>
+    post<{ ok: boolean }>('/auth/change-password', { current_password, new_password }),
 
   users: () => get<AdminUser[]>('/users'),
   inviteUser: (email: string, name: string, is_admin: boolean) =>

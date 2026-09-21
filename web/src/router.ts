@@ -8,6 +8,7 @@ export const router = createRouter({
     { path: '/lessons', name: 'lessons', component: () => import('./views/LessonsView.vue') },
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/set-password', name: 'set-password', component: () => import('./views/SetPasswordView.vue'), meta: { public: true } },
+    { path: '/account', name: 'account', component: () => import('./views/AccountView.vue') },
     { path: '/users', name: 'users', component: () => import('./views/UsersView.vue'), meta: { admin: true } },
     {
       path: '/talk/:conf/:slug',

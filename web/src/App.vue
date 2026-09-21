@@ -70,6 +70,7 @@ function cycleTheme() {
           <div v-if="menu === 'account'" class="menu right" role="menu">
             <RouterLink v-if="auth.user.is_admin" to="/settings" class="item" role="menuitem" @click="menu = null">Settings</RouterLink>
             <RouterLink v-if="auth.user.is_admin" to="/users" class="item" role="menuitem" @click="menu = null">Users</RouterLink>
+            <RouterLink to="/account" class="item" role="menuitem" @click="menu = null">Change password</RouterLink>
             <button class="item" role="menuitem" @click="cycleTheme">Theme: {{ ui.theme === 'system' ? 'auto' : ui.theme }}</button>
             <button class="item" role="menuitem" @click="auth.logout()">Sign out</button>
           </div>

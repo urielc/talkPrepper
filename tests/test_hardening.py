@@ -389,3 +389,33 @@ def test_successful_logins_do_not_lock_the_account(client):
     for _ in range(7):
         r = client.post("/api/auth/login", json={"email": "multi@example.com", "password": "correct horse battery"})
         assert r.status_code == 200, r.text
+
+
+def test_change_password_requires_current_and_keeps_this_session(client):
+    make_user(client, "change@example.com")
+    login(client, "change@example.com")
+    # a second device
+    from fastapi.testclient import TestClient
+    other = TestClient(client.app)
+    r = other.post("/api/auth/login", json={"email": "change@example.com", "password": "correct horse battery"})
+    assert r.status_code == 200
+    assert other.get("/api/auth/me").status_code == 200
+
+    r = client.post("/api/auth/change-password", json={"current_password": "wrong one", "new_password": "a brand new phrase"})
+    assert r.status_code == 400
+    r = client.post("/api/auth/change-password", json={"current_password": "correct horse battery", "new_password": "short"})
+    assert r.status_code == 400
+    r = client.post("/api/auth/change-password", json={"current_password": "correct horse battery", "new_password": "a brand new phrase"})
+    assert r.status_code == 200, r.text
+
+    assert client.get("/api/auth/me").status_code == 200      # this session survives
+    assert other.get("/api/auth/me").status_code == 401       # the other device is signed out
+    client.post("/api/auth/logout")
+    r = client.post("/api/auth/login", json={"email": "change@example.com", "password": "correct horse battery"})
+    assert r.status_code == 401                               # old password gone
+    login(client, "change@example.com", "a brand new phrase")
+
+
+def test_change_password_needs_sign_in(client):
+    r = client.post("/api/auth/change-password", json={"current_password": "x", "new_password": "a brand new phrase"})
+    assert r.status_code == 401
