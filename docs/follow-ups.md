@@ -9,7 +9,7 @@ Dated status that git does not already record. Update or delete lines as they re
 **Commit authorship:** all three commits were rewritten on 2026-09-15 to the global `uri@uacconsulting.com`
 (new SHAs 5f153a0, 6469c9c, 862e4e6); the mistaken repo-local ArbiterSports identity is gone.
 
-**Server:** running on 2026-09-20, bound to 0.0.0.0:8765; the machine's LAN address changes (192.168.1.24 on 2026-09-07, 192.168.1.52 on 2026-09-19) — read it with `ip -4 addr show wlo1` rather than quoting an old one. Started by hand with `python3 -m server.cli serve --host 0.0.0.0 --port 8765` (nohup). It does
+**Server:** restarted 2026-09-21 (midday) on the hardened code (commit 2106939), bound to 0.0.0.0:8765, log in `data/server.log`; the machine's LAN address changes (192.168.1.24 on 2026-09-07, 192.168.1.52 on 2026-09-19) — read it with `ip -4 addr show wlo1` rather than quoting an old one. Started by hand with `python3 -m server.cli serve --host 0.0.0.0 --port 8765` (nohup). It does
 not survive a reboot; a systemd user unit was offered but not built.
 
 **No git remote** is configured; nothing has ever been pushed.
