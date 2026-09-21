@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useLessonStore } from '../stores/lesson'
 import { renderMarkdown } from '../utils/markdown'
-import CollapsibleSection from '../components/CollapsibleSection.vue'
 import counselMd from '../content/landing.md?raw'
 import hero from '../content/hero.json'
 import videosJson from '../content/videos.json'
@@ -38,6 +37,30 @@ const sections: Section[] = counselMd
   })
 const columns = sections.filter((s) => s.title !== 'Sources')
 const sources = sections.find((s) => s.title === 'Sources')
+
+/**
+ * The counsel accordion. Only one panel is open at a time, so the state is the open
+ * panel's key rather than a flag per section; clicking the open one closes it.
+ */
+const HANDBOOK_KEY = 'handbook'
+const OPEN_STORE = 'lp.landing.open'
+const openKey = ref(columns[0]?.title ?? '')
+try {
+  const saved = localStorage.getItem(OPEN_STORE)
+  if (saved !== null) openKey.value = saved
+} catch {
+  /* storage unavailable */
+}
+watch(openKey, (v) => {
+  try {
+    localStorage.setItem(OPEN_STORE, v)
+  } catch {
+    /* ignore */
+  }
+})
+function toggle(key: string) {
+  openKey.value = openKey.value === key ? '' : key
+}
 
 function ytId(url: string): string | null {
   const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/)
@@ -112,26 +135,39 @@ function posterFallback(e: Event) {
         </section>
 
         <div class="counsel">
-          <CollapsibleSection
-            v-for="(s, i) in columns"
-            :key="s.title"
-            :title="s.title"
-            :storage-key="`landing.${i}`"
-            :default-open="i === 0"
-          >
-            <div class="md" v-html="s.html"></div>
-          </CollapsibleSection>
+          <section v-for="(s, i) in columns" :key="s.title" class="item">
+            <button
+              type="button"
+              class="section-head"
+              :aria-expanded="openKey === s.title"
+              :aria-controls="`counsel-panel-${i}`"
+              @click="toggle(s.title)"
+            >
+              <span class="title">{{ s.title }}</span>
+              <span class="chev" aria-hidden="true">▾</span>
+            </button>
+            <div v-show="openKey === s.title" :id="`counsel-panel-${i}`" class="panel">
+              <div class="md" v-html="s.html"></div>
+            </div>
+          </section>
 
-          <CollapsibleSection
-            class="hb-item"
-            :title="hero.handbook.shortLabel"
-            storage-key="landing.handbook"
-            :default-open="false"
-          >
-            <p class="hb-label">{{ hero.handbook.label }}</p>
-            <p class="serif hb-text">{{ hero.handbook.text }}</p>
-            <a :href="hero.handbook.link" target="_blank" rel="noopener" class="hb-link">{{ hero.handbook.linkLabel }}</a>
-          </CollapsibleSection>
+          <section class="item hb-item">
+            <button
+              type="button"
+              class="section-head"
+              :aria-expanded="openKey === HANDBOOK_KEY"
+              aria-controls="counsel-panel-handbook"
+              @click="toggle(HANDBOOK_KEY)"
+            >
+              <span class="title">{{ hero.handbook.shortLabel }}</span>
+              <span class="chev" aria-hidden="true">▾</span>
+            </button>
+            <div v-show="openKey === HANDBOOK_KEY" id="counsel-panel-handbook" class="panel">
+              <p class="hb-label">{{ hero.handbook.label }}</p>
+              <p class="serif hb-text">{{ hero.handbook.text }}</p>
+              <a :href="hero.handbook.link" target="_blank" rel="noopener" class="hb-link">{{ hero.handbook.linkLabel }}</a>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -322,10 +358,18 @@ function posterFallback(e: Event) {
 /* ---- collapsible counsel column */
 .counsel {
   max-height: calc(var(--stage-h) + 5rem);
-  overflow-y: auto;
+  /* Explicitly hidden: `overflow-y: auto` alone makes the x axis `auto` too, which
+     showed a scrollbar for the pixel the vertical one takes off the content width. */
+  overflow: hidden auto;
 }
-.counsel :deep(.csec:last-child) {
+.item {
+  margin-bottom: 1rem;
+}
+.item:last-child {
   margin-bottom: 0;
+}
+.panel {
+  padding-top: 0.5rem;
 }
 .hb-item {
   border-left: 3px solid var(--gold);
