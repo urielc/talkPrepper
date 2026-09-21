@@ -135,7 +135,7 @@ function posterFallback(e: Event) {
         </section>
 
         <div class="counsel">
-          <section v-for="(s, i) in columns" :key="s.title" class="item">
+          <section v-for="(s, i) in columns" :key="s.title" class="item" :class="{ open: openKey === s.title }">
             <button
               type="button"
               class="section-head"
@@ -151,7 +151,7 @@ function posterFallback(e: Event) {
             </div>
           </section>
 
-          <section class="item hb-item">
+          <section class="item" :class="{ open: openKey === HANDBOOK_KEY }">
             <button
               type="button"
               class="section-head"
@@ -360,16 +360,19 @@ function posterFallback(e: Event) {
 }
 .item {
   margin-bottom: 1rem;
+  /* The bar marks the open panel, the way the menu's underline marks the active
+     link. Held transparent when closed so opening one shifts nothing sideways. */
+  border-left: 3px solid transparent;
+  padding-left: 0.75rem;
+}
+.item.open {
+  border-left-color: var(--gold);
 }
 .item:last-child {
   margin-bottom: 0;
 }
 .panel {
   padding-top: 0.5rem;
-}
-.hb-item {
-  border-left: 3px solid var(--gold);
-  padding-left: 0.75rem;
 }
 .hb-label {
   color: var(--ink-2);
