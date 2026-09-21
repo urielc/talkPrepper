@@ -2,7 +2,7 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## As of 2026-09-21
+## As of 2026-09-21 (evening)
 
 **Digest feature:** committed 2026-09-15 (87db893) after a real end-to-end run with Sonnet 5 on 2026-09-11 (31 tests green). Working tree clean as of 2026-09-20.
 
@@ -14,7 +14,7 @@ not survive a reboot; a systemd user unit was offered but not built.
 
 **No git remote** is configured; nothing has ever been pushed.
 
-## Endnotes scraped separately — full data swap in progress
+## Endnotes scraped separately (done)
 
 The scraper (since 0317794) stores endnotes per talk (`notes`) with in-text marker positions (`note_refs`);
 the indexer stores `marker`/`note_refs` on `paragraphs`; the reader shows clickable superscript markers.
@@ -24,21 +24,29 @@ as before. Swapped into `data/general_conference_talks.json`, index rebuilt (42 
 built_at 2026-09-20T17:21:35) and server restarted the same evening; older talks now show numbered notes
 (e.g. 2025-10/32dennis has 35 marked notes). Nothing pending here.
 
-## Multi-user + hosting (plan approved 2026-09-21; sections 1–3 built the same day)
+## Multi-user + hosting (plan approved 2026-09-21; sections 1–3 done, 4–6 not started)
 
-Done locally on 2026-09-21: users/sessions/invites/working_on tables; argon2 passwords; cookie sessions;
-per-user notes, pins, chats and "My lessons" (replaces the single current talk); admin-only Settings/Users/
-index; invite + set-password + forgot-password flows; landing page with the preparation statement
-(`web/src/content/landing.md`), a Church-leaders video row (`web/src/content/videos.json`, empty until Uri
-adds `{title, speaker, url}` entries), My lessons and the talk picker. The LAN database was migrated; Uri's
-data belongs to the admin account `uri@uacconsulting.com`, which still needs its password set from the
-invite link printed on 2026-09-21 (valid 72 h; regenerate with `python -m server.cli migrate` + Users page,
-or `issue_invite`).
+Done 2026-09-21, all committed and pushed to github.com/urielc/talkPrepper (`main`, last commit 315ff61):
+accounts, sessions, invites, per-user notes/pins/chats/My lessons, admin Settings/Users pages, landing page
+redesign (hero + Handbook panel, menu bar with one "Lesson prep" link to `/lessons`, three counsel columns,
+sources), `/lessons` page (your lessons + talk picker). The admin `uri@uacconsulting.com` has set a password
+and can sign in. Email is **not** configured (from-address missing), so invites hand the admin a link.
 
-Not yet done from the plan: section 4 (ship-index), 5 (deploy files: `deploy/nginx.conf`,
-`deploy/lessonprep.service`, `deploy/README.md`, `.github/workflows/deploy.yml`), 6 (droplet step 0), the
-GitHub remote under `UrielC`, and the earlier UI task below. Email invites use the Postmark settings already
-in the DB; tested only with email unconfigured (link handed to admin) — a real invite email has not been sent.
+Content files: `web/src/content/hero.json` (hero + Handbook panel), `web/src/content/landing.md` (columns
+split on `## ` headings; "Sources" renders beneath), `web/src/content/videos.json` (array of
+`{title, speaker, url}`; the video row appears only when non-empty; YouTube ids are parsed from the url and
+shown as img.youtube.com thumbnails linking out).
+
+Not done from the plan: section 4 (`make ship-index`), 5 (deploy files: `deploy/nginx.conf`,
+`deploy/lessonprep.service`, `deploy/README.md`, `.github/workflows/deploy.yml`), 6 (droplet step 0).
+
+## Next (Uri, 2026-09-21): settings page changes + YouTube links
+
+Uri will describe the settings changes and supply YouTube links. Settings page is
+`web/src/views/SettingsView.vue` (~300 lines: AI provider, email, talk index, appearance sections;
+admin-only; backed by `server/routers/settings.py` with `SETTINGS_DEFAULTS` in `server/config.py`).
+Add links as `videos.json` entries and rebuild (`cd web && npm run build`; the server serves `web/dist`
+statically, no restart needed).
 
 ## Still open: related-talks list, tabbed reading, tighter centre margins
 
