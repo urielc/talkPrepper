@@ -48,6 +48,7 @@ function cycleTheme() {
       </RouterLink>
       <nav v-if="auth.user" class="row">
         <RouterLink to="/" class="navlink">Home</RouterLink>
+        <RouterLink to="/lessons" class="navlink">Lesson prep</RouterLink>
 
         <div class="menu-host">
           <button class="navlink menubtn" :class="{ on: menu === 'lessons' }" @click="toggleMenu('lessons')" aria-haspopup="menu" :aria-expanded="menu === 'lessons'">

@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, type Conference, type TalkSummary } from '../api'
-import { talkRoute } from '../router'
-import { useAuthStore } from '../stores/auth'
 import { useLessonStore } from '../stores/lesson'
 import { renderMarkdown } from '../utils/markdown'
 import counselMd from '../content/landing.md?raw'
@@ -16,58 +12,25 @@ interface Video {
   url: string
 }
 
-const auth = useAuthStore()
 const lesson = useLessonStore()
-const counsel = renderMarkdown(counselMd)
+if (!lesson.mineLoaded) lesson.loadMine().catch(() => {})
+
 const videos = (videosJson as Video[]).filter((v) => v.url)
 
-const conferences = ref<Conference[]>([])
-const conferenceId = ref('')
-const talks = ref<TalkSummary[]>([])
-const q = ref('')
-const allConferences = ref(false)
-const results = ref<TalkSummary[] | null>(null)
-const others = ref<{ talk: TalkSummary; notes_len: number; pin_count: number }[]>([])
-const loading = ref(false)
-const error = ref<string | null>(null)
-
-onMounted(async () => {
-  try {
-    if (!lesson.mineLoaded) await lesson.loadMine()
-    conferences.value = await api.conferences()
-    if (conferences.value.length) conferenceId.value = conferences.value[0].id
-    const recent = await api.lessons()
-    others.value = recent.filter((r) => !lesson.isMine(r.talk.id))
-  } catch (e: any) {
-    error.value = e.message
-  }
-})
-
-watch(conferenceId, async (id) => {
-  if (!id) return
-  loading.value = true
-  try {
-    talks.value = await api.conferenceTalks(id)
-  } finally {
-    loading.value = false
-  }
-})
-
-let timer: ReturnType<typeof setTimeout> | null = null
-watch([q, allConferences], () => {
-  if (timer) clearTimeout(timer)
-  if (!q.value.trim()) {
-    results.value = null
-    return
-  }
-  timer = setTimeout(async () => {
-    results.value = await api.talks(q.value.trim(), allConferences.value ? undefined : conferenceId.value, 60)
-  }, 180)
-})
-
-const shown = computed(() => results.value ?? talks.value)
-const currentConf = computed(() => conferences.value.find((c) => c.id === conferenceId.value))
-const firstName = computed(() => (auth.user?.name || '').split(' ')[0])
+/** Split the counsel Markdown on its "## " headings so each section can be placed. */
+interface Section {
+  title: string
+  html: string
+}
+const sections: Section[] = counselMd
+  .split(/^## /m)
+  .filter((s) => s.trim())
+  .map((block) => {
+    const [title, ...rest] = block.split('\n')
+    return { title: title.trim(), html: renderMarkdown(rest.join('\n')) }
+  })
+const columns = sections.filter((s) => s.title !== 'Sources')
+const sources = sections.find((s) => s.title === 'Sources')
 
 function ytId(url: string): string | null {
   const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/)
@@ -77,18 +40,10 @@ function thumb(url: string): string | null {
   const id = ytId(url)
   return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
 }
-function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boolean }): string {
-  const parts: string[] = []
-  if (m.notes_len) parts.push('notes')
-  if (m.pin_count) parts.push(`${m.pin_count} pinned`)
-  if (m.has_digest) parts.push('digest')
-  return parts.join(', ')
-}
 </script>
 
 <template>
   <div class="landing">
-    <!-- Hero band: statement on the left, the Handbook's line on the right -->
     <section class="hero">
       <div class="hero-inner">
         <div class="hero-text">
@@ -103,93 +58,47 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
       </div>
     </section>
 
-    <div class="body">
-      <!-- Left: counsel and videos -->
-      <aside class="col counsel">
-        <div class="md" v-html="counsel"></div>
-        <section v-if="videos.length" class="videos">
-          <h2>Counsel on video</h2>
-          <ul class="video-list">
-            <li v-for="v in videos" :key="v.url">
-              <a :href="v.url" target="_blank" rel="noopener" class="video">
-                <img v-if="thumb(v.url)" :src="thumb(v.url)!" :alt="`Watch: ${v.title}`" loading="lazy" />
-                <span class="v-title">{{ v.title }}</span>
-                <span class="v-speaker">{{ v.speaker }}</span>
-              </a>
-            </li>
-          </ul>
-        </section>
-      </aside>
+    <nav class="menubar" aria-label="Sections">
+      <div class="menubar-inner">
+        <RouterLink to="/lessons" class="menu-link">
+          Lesson prep
+          <span class="menu-sub">{{ lesson.mine.length ? `${lesson.mine.length} in progress · pick or continue a talk` : 'pick a talk to begin' }}</span>
+        </RouterLink>
+      </div>
+    </nav>
 
-      <!-- Centre: the teacher's lessons -->
-      <section class="col mine">
-        <h2>{{ firstName ? `${firstName}, your lessons` : 'My lessons' }}</h2>
-        <p v-if="!lesson.mine.length" class="empty">
-          Nothing in progress. Pick a talk on the right and choose “Add to my lessons” in its header.
-        </p>
-        <ul v-else class="cards">
-          <li v-for="m in lesson.mine" :key="m.talk.id" class="card">
-            <RouterLink :to="talkRoute(m.talk.id)" class="card-main">
-              <span class="card-title">{{ m.talk.title }}</span>
-              <span class="talk-meta">{{ m.talk.speaker }}, {{ m.talk.conference }}</span>
-              <span v-if="lessonMeta(m)" class="card-meta">{{ lessonMeta(m) }}</span>
-            </RouterLink>
-            <div class="card-actions">
-              <RouterLink :to="talkRoute(m.talk.id)" class="btn-link">Continue</RouterLink>
-              <button class="quiet small" @click="lesson.removeMine(m.talk.id)">Remove</button>
-            </div>
+    <div class="body">
+      <div class="columns">
+        <section v-for="s in columns" :key="s.title" class="column">
+          <h2>{{ s.title }}</h2>
+          <div class="md" v-html="s.html"></div>
+        </section>
+      </div>
+
+      <section v-if="videos.length" class="videos">
+        <h2>Counsel on video</h2>
+        <ul class="video-row">
+          <li v-for="v in videos" :key="v.url">
+            <a :href="v.url" target="_blank" rel="noopener" class="video">
+              <img v-if="thumb(v.url)" :src="thumb(v.url)!" :alt="`Watch: ${v.title}`" loading="lazy" />
+              <span class="v-title">{{ v.title }}</span>
+              <span class="v-speaker">{{ v.speaker }}</span>
+            </a>
           </li>
         </ul>
-
-        <template v-if="others.length">
-          <h3>Other talks with notes</h3>
-          <ul class="plain">
-            <li v-for="r in others" :key="r.talk.id">
-              <RouterLink :to="talkRoute(r.talk.id)" class="talk">
-                <span class="talk-title">{{ r.talk.title }}</span>
-                <span class="talk-meta">{{ r.talk.speaker }}, {{ r.talk.conference }}</span>
-              </RouterLink>
-            </li>
-          </ul>
-        </template>
       </section>
 
-      <!-- Right: start a lesson -->
-      <aside class="col pick">
-        <h2>Start a lesson</h2>
-        <div class="controls">
-          <select v-model="conferenceId" aria-label="Conference">
-            <option v-for="c in conferences" :key="c.id" :value="c.id">{{ c.label }}</option>
-          </select>
-          <input v-model="q" type="search" placeholder="Speaker or title" aria-label="Find a talk" />
-          <label class="row small muted"><input v-model="allConferences" type="checkbox" /> Search all conferences</label>
-        </div>
-        <div v-if="error" class="notice error">{{ error }}</div>
-        <div v-else-if="loading && !shown.length" class="muted">Loading…</div>
-        <p v-else-if="!shown.length" class="empty">No talks match. Try another spelling, or search all conferences.</p>
-        <ol v-else class="plain talks">
-          <li v-for="t in shown" :key="t.id">
-            <RouterLink :to="talkRoute(t.id)" class="talk">
-              <span class="talk-title">{{ t.title }}</span>
-              <span class="talk-meta">
-                {{ t.speaker }}<template v-if="results">, {{ t.conference }}</template>
-                <span v-if="t.has_lesson" class="badge">notes</span>
-              </span>
-            </RouterLink>
-          </li>
-        </ol>
-        <p v-if="currentConf && !results" class="faint small">
-          {{ currentConf.label }} <a :href="currentConf.url" target="_blank" rel="noopener">on churchofjesuschrist.org</a>
-        </p>
-      </aside>
+      <section v-if="sources" class="sources">
+        <h2>{{ sources.title }}</h2>
+        <div class="md" v-html="sources.html"></div>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* ---- hero */
+/* ---- hero: fixed navy in both themes, like the Church site's hero band */
 .hero {
-  /* fixed navy in both themes, like the Church site's hero band */
   background: #0b2e59;
   color: #fff;
 }
@@ -207,13 +116,13 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
   font-size: clamp(1.7rem, 2.6vw, 2.4rem);
   line-height: 1.15;
   letter-spacing: -0.01em;
-  max-width: 22ch;
+  max-width: 24ch;
 }
 .hero-text p {
   margin-top: 1rem;
   font-size: var(--fs-2);
   line-height: 1.55;
-  max-width: 52ch;
+  max-width: 58ch;
   color: rgba(255, 255, 255, 0.88);
 }
 .handbook {
@@ -245,64 +154,90 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
   text-decoration: none;
 }
 
+/* ---- menu bar */
+.menubar {
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--rule);
+}
+.menubar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+}
+.menu-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: var(--fs-2);
+  color: var(--ink);
+  border-bottom: 3px solid var(--gold);
+}
+.menu-link:hover {
+  text-decoration: none;
+  color: var(--blue-2);
+}
+.menu-sub {
+  font-family: var(--sans);
+  font-weight: 400;
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+
 /* ---- three columns */
 .body {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem 2rem 4rem;
+  padding: 2.5rem 2rem 4rem;
+}
+.columns {
   display: grid;
-  grid-template-columns: minmax(260px, 3fr) minmax(0, 5fr) minmax(280px, 4fr);
-  gap: 2.5rem;
-  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3rem;
 }
-.col h2 {
+.column h2,
+.videos h2,
+.sources h2 {
+  font-family: var(--serif);
   font-size: var(--fs-3);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--gold);
 }
-h3 {
-  font-size: var(--fs-2);
-  margin: 1.75rem 0 0.4rem;
-}
-
-/* counsel column */
-.counsel .md {
-  font-size: var(--fs-1);
-  line-height: 1.5;
+.md {
+  font-size: 1.02rem;
+  line-height: 1.55;
   color: var(--ink-2);
 }
-.counsel .md :deep(h2) {
-  font-family: var(--serif);
-  font-size: var(--fs-2);
-  color: var(--ink);
-  margin: 0 0 0.4rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--rule);
-}
-.counsel .md :deep(h2:first-child) {
-  padding-top: 0;
-  border-top: 0;
-}
-.counsel .md :deep(ul) {
+.md :deep(ul) {
   padding-left: 1.1rem;
-  margin: 0 0 1rem;
+  margin: 0;
 }
-.counsel .md :deep(li) {
-  margin-bottom: 0.3rem;
+.md :deep(li) {
+  margin-bottom: 0.45rem;
 }
-.counsel .md :deep(p) {
-  margin: 0 0 0.75rem;
+.md :deep(p) {
+  margin: 0 0 0.85rem;
 }
-.videos {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--rule);
+.md :deep(a) {
+  color: var(--blue-2);
 }
-.video-list {
+
+/* ---- videos and sources */
+.videos,
+.sources {
+  margin-top: 3rem;
+}
+.video-row {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1.25rem;
 }
 .video {
   display: block;
@@ -320,7 +255,7 @@ h3 {
   object-fit: cover;
   border-radius: var(--radius);
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.4rem;
 }
 .v-title {
   display: block;
@@ -333,132 +268,22 @@ h3 {
   color: var(--ink-2);
   font-size: var(--fs-0);
 }
-
-/* centre: lesson cards */
-.cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.9rem;
+.sources .md {
+  font-size: var(--fs-1);
+  columns: 2;
+  column-gap: 3rem;
 }
-.card {
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 1rem 1.1rem;
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  background: var(--paper);
-}
-.card-main {
-  flex: 1;
-  min-width: 0;
-  color: inherit;
-  display: block;
-}
-.card-main:hover {
-  text-decoration: none;
-}
-.card-main:hover .card-title {
-  color: var(--blue-2);
-}
-.card-title {
-  display: block;
-  font-family: var(--serif);
-  font-size: var(--fs-3);
-  font-weight: 600;
-  line-height: 1.25;
-}
-.card-meta {
-  display: block;
-  color: var(--gold-2);
-  font-size: var(--fs-0);
-  margin-top: 0.25rem;
-}
-.card-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-.btn-link {
-  display: inline-block;
-  padding: 0.4rem 0.9rem;
-  border-radius: var(--radius);
-  background: var(--blue);
-  color: #fff;
-  font-weight: 600;
-}
-.btn-link:hover {
-  text-decoration: none;
-  filter: brightness(1.1);
+.sources .md :deep(li) {
+  break-inside: avoid;
 }
 
-/* right: picker */
-.pick {
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 1.1rem 1.1rem 0.75rem;
-  background: var(--paper-2);
-}
-.controls {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-.pick .talks {
-  max-height: 60vh;
-  overflow: auto;
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
-.plain {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.plain li + li {
-  border-top: 1px solid var(--rule);
-}
-.talk {
-  display: block;
-  padding: 0.55rem 0.7rem;
-  color: inherit;
-}
-.talk:hover {
-  text-decoration: none;
-  background: var(--paper-2);
-}
-.talk:hover .talk-title {
-  color: var(--blue-2);
-}
-.talk-title,
-.talk-meta {
-  display: block;
-}
-.talk-meta {
-  margin-top: 0.1rem;
-}
-.badge {
-  margin-left: 0.5rem;
-  color: var(--gold-2);
-}
-.faint.small {
-  margin-top: 0.6rem;
-}
-
-@media (max-width: 1100px) {
-  .body {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+@media (max-width: 1000px) {
+  .columns {
+    grid-template-columns: 1fr;
+    gap: 2rem;
   }
-  .counsel {
-    grid-column: 1 / -1;
-    order: 3;
-    column-count: 2;
-    column-gap: 2.5rem;
+  .sources .md {
+    columns: 1;
   }
 }
 @media (max-width: 760px) {
@@ -466,13 +291,10 @@ h3 {
     grid-template-columns: 1fr;
     padding: 2rem 1.25rem;
   }
+  .menubar-inner,
   .body {
-    grid-template-columns: 1fr;
-    padding: 1.5rem 1.25rem 3rem;
-    gap: 2rem;
-  }
-  .counsel {
-    column-count: 1;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
   }
 }
 </style>

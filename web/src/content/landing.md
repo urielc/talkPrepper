@@ -1,9 +1,9 @@
 ## What this tool is for
 
-- Reading the assigned talk with its scripture references in place
+- Reading the assigned talk with every scripture reference in place
 - Finding other conference talks and passages on the same themes
-- Seeing the talk's outline, its quotable lines and possible discussion questions
-- Keeping your own notes and pinned references in one place
+- Seeing the talk's outline, its quotable lines and questions that could open a discussion
+- Keeping your own notes, pinned references and the insights that come as you study
 
 ## What it is not for
 
@@ -14,9 +14,9 @@
 
 ## What Church leaders have said
 
-The *General Handbook* (December 2025) says AI can enhance learning and communication but cannot substitute for individual effort or for divine inspiration, and cannot replace genuine relationships with God and others. It asks members who use AI to do so in positive, uplifting ways that uphold the standards and teachings of the Church.
+The *General Handbook* (December 2025) teaches that AI can enhance learning and communication but cannot substitute for individual effort or divine inspiration, and cannot replace genuine relationships with God and others. Members who use it are asked to do so in positive, uplifting ways that uphold the standards and teachings of the Church.
 
-Elder Gerrit W. Gong has explained that the Church does not use AI to prepare general conference messages, because AI cannot provide the assurance of inspiration that those messages carry.
+Elder Gerrit W. Gong has explained that the Church does not use AI to prepare general conference messages, because AI cannot carry the assurance of inspiration those messages hold.
 
 Elder David A. Bednar has cautioned against letting the speed of technology tempt us to skip the effortful, personal work through which spiritual blessings come. The labor of preparing is itself good for the soul.
 
