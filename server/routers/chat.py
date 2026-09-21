@@ -15,6 +15,7 @@ from ..ai.base import ChatEvent, ProviderError
 from ..ai.prompts import build_system
 from ..ai.tools import TOOLS, ToolContext
 from ..deps import get_conn, get_engine, get_user
+from ..log import security
 from ..settings import get_settings
 from .talks import talk_detail
 
@@ -116,7 +117,8 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
                     error = ev.data.get("message", "unknown error")
                 yield sse(ev.type, ev.data)
         except Exception as e:  # never leave the client hanging
-            error = f"{type(e).__name__}: {e}"
+            security.exception("chat.failed user_id=%s talk_id=%s", uid, body.talk_id)
+            error = "The AI request failed. Try again, or ask an admin to check the AI settings."
             yield sse("error", {"message": error})
         flush_text()
         if error:

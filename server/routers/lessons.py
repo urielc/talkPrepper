@@ -7,11 +7,14 @@ import sqlite3
 from typing import Literal
 
 import markdown
+import nh3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from ..auth import rate_limit
 from ..deps import get_conn, get_user
+from ..log import event, security
 from ..mailer import send_html, MailConfigError, email_ready, missing_email_setup
 from ..scriptures import get_verses, format_ref
 from ..settings import get_settings
@@ -45,7 +48,7 @@ class ReorderBody(BaseModel):
 
 class EmailBody(BaseModel):
     to: list[str] = Field(min_length=1, max_length=20)
-    subject: str | None = None
+    subject: str | None = Field(default=None, max_length=200)
 
 
 def ensure_lesson(conn: sqlite3.Connection, uid: int, talk_id: str) -> None:
@@ -81,12 +84,16 @@ def list_lessons(conn=Depends(get_conn), user=Depends(get_user)):
     return out
 
 
+EXPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:"
+
+
 @router.get("/lessons/{talk_id:path}/export.html", response_class=HTMLResponse)
 def export_html(talk_id: str, sections: str | None = None, conn=Depends(get_conn), user=Depends(get_user)):
     """Printable lesson sheet. ``sections`` is a comma list drawn from
     notes, essence, points, quotes, questions, pins; omitted means everything."""
     chosen = [x.strip() for x in sections.split(",") if x.strip()] if sections else None
-    return HTMLResponse(render_export(conn, user["id"], talk_id, chosen))
+    return HTMLResponse(render_export(conn, user["id"], talk_id, chosen),
+                        headers={"Content-Security-Policy": EXPORT_CSP, "X-Content-Type-Options": "nosniff"})
 
 
 @router.post("/lessons/{talk_id:path}/email")
@@ -95,13 +102,16 @@ def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn), user=Dep
     settings = get_settings(conn)
     if not email_ready(settings):
         raise HTTPException(400, "Email is not configured. " + missing_email_setup(settings))
+    rate_limit(f"email:{user['id']}", limit=10, window_s=3600)
     subject = body.subject or f"Lesson prep: {talk['title']} ({talk['speaker']})"
     try:
         info = send_html(settings, body.to, subject, render_export(conn, user["id"], talk_id))
     except MailConfigError as e:
         raise HTTPException(400, str(e))
     except Exception as e:  # network / smtplib errors
-        raise HTTPException(502, f"Sending failed: {e}")
+        security.exception("email.failed user_id=%s recipients=%d", user["id"], len(body.to))
+        raise HTTPException(502, "Sending failed. Check the email settings or try again later.")
+    event("email.sent", user_id=user["id"], recipients=len(body.to))
     return {"ok": True, "to": body.to, "subject": subject, **info}
 
 
@@ -278,7 +288,7 @@ def render_export(conn: sqlite3.Connection, uid: int, talk_id: str, sections: li
     lesson = lesson_for(conn, uid, talk_id)
     digest_html = render_digest_sections(load_digest(conn, talk_id), chosen)
     esc = html.escape
-    notes_html = markdown.markdown(lesson["notes_md"] or "", extensions=["extra", "sane_lists"]) \
+    notes_html = nh3.clean(markdown.markdown(lesson["notes_md"] or "", extensions=["extra", "sane_lists"])) \
         if lesson["notes_md"] else "<p><em>No notes yet.</em></p>"
     pins_html = []
     for p in lesson["pins"]:

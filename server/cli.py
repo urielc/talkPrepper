@@ -62,8 +62,11 @@ def cmd_migrate(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
+    import logging
     import uvicorn
-    uvicorn.run("server.main:app", host=args.host, port=args.port, reload=args.reload)
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    uvicorn.run("server.main:app", host=args.host, port=args.port, reload=args.reload, server_header=False)
 
 
 def main(argv: list[str] | None = None) -> None:

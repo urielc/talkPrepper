@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 # On a server the data lives outside the git clone (LP_DATA_DIR); locally it is ./data.
@@ -46,10 +47,19 @@ SETTINGS_DEFAULTS = {
 SECRET_SETTINGS = {"anthropic_api_key", "smtp_password", "postmark_server_token"}
 
 # Auth / deployment (environment; all optional on a LAN install)
-BASE_URL = os.environ.get("LP_BASE_URL", "")            # e.g. https://lessons.example.com, for links in emails
+BASE_URL = os.environ.get("LP_BASE_URL", "").rstrip("/")  # e.g. https://lessons.example.com, for links in emails
 COOKIE_NAME = "lp_session"
-COOKIE_SECURE = os.environ.get("LP_COOKIE_SECURE", "0") in ("1", "true", "yes")
+_LP_COOKIE_SECURE = os.environ.get("LP_COOKIE_SECURE", "0") in ("1", "true", "yes")
+COOKIE_SECURE = BASE_URL.startswith("https://") or _LP_COOKIE_SECURE
 TRUST_PROXY = os.environ.get("LP_TRUST_PROXY", "0") in ("1", "true", "yes")
 SESSION_DAYS = 30
 INVITE_HOURS = 72
 POSTMARK_API_URL = "https://api.postmarkapp.com/email"
+
+if (TRUST_PROXY or COOKIE_SECURE) and not BASE_URL:
+    raise RuntimeError("LP_BASE_URL is required when LP_TRUST_PROXY or LP_COOKIE_SECURE is set")
+
+if BASE_URL:
+    _parsed = urlsplit(BASE_URL)
+    if _parsed.scheme not in ("http", "https") or not _parsed.netloc or _parsed.path:
+        raise RuntimeError("LP_BASE_URL must be a bare http:// or https:// origin with no path, e.g. https://lessons.example.com")

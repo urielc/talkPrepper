@@ -1,4 +1,4 @@
-.PHONY: setup scriptures index dev build serve test scrape update-talks
+.PHONY: setup scriptures index dev build serve test scrape update-talks audit
 
 PY ?= python3
 
@@ -26,6 +26,9 @@ serve-lan: build  ## same, reachable from other devices on the local network
 
 test:
 	$(PY) -m pytest -q
+
+audit:            ## check requirements.txt for known vulnerabilities (pip install pip-audit first)
+	$(PY) -m pip_audit -r requirements.txt
 
 scrape:           ## full re-scrape (hours)
 	$(PY) scrape_conference_talks.py

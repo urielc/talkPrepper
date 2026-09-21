@@ -24,7 +24,7 @@ async function submit() {
       forgotSent.value = true
     } else {
       await auth.login(email.value.trim(), password.value)
-      const next = typeof route.query.next === 'string' && route.query.next.startsWith('/') ? route.query.next : '/'
+      const next = typeof route.query.next === 'string' && /^\/(?!\/)/.test(route.query.next) ? route.query.next : '/'
       router.replace(next)
     }
   } catch (e: any) {

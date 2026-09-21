@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import create_user, issue_invite, user_to_dict
 from ..deps import get_admin, get_conn
+from ..log import event
 from ..mailer import MailConfigError, email_ready, missing_email_setup, send_html
 from ..settings import get_settings
 from .auth import base_url
@@ -41,6 +42,7 @@ def _list(conn) -> list[dict]:
 def _send_invite(conn, request: Request, user, hours: int = 72) -> dict:
     settings = get_settings(conn)
     token = issue_invite(conn, user["id"], hours=hours)
+    event("invite.issued", user_id=user["id"])
     link = f"{base_url(request)}/set-password?token={token}"
     if not email_ready(settings):
         # No mail configured: hand the link to the admin to pass on by other means.
@@ -84,13 +86,19 @@ def patch_user(user_id: int, body: UserPatch, conn=Depends(get_conn), admin=Depe
         raise HTTPException(404, "user not found")
     if user_id == admin["id"] and (body.disabled or body.is_admin is False):
         raise HTTPException(400, "You cannot disable or demote your own account.")
+    changed = []
     if body.name is not None:
         conn.execute("UPDATE users SET name=? WHERE id=?", (body.name.strip(), user_id))
+        changed.append("name")
     if body.is_admin is not None:
         conn.execute("UPDATE users SET is_admin=? WHERE id=?", (int(body.is_admin), user_id))
+        changed.append("is_admin")
     if body.disabled is not None:
         conn.execute("UPDATE users SET disabled=? WHERE id=?", (int(body.disabled), user_id))
+        changed.append("disabled")
         if body.disabled:
             conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
     conn.commit()
+    if changed:
+        event("user.patched", admin_id=admin["id"], target_user_id=user_id, fields=",".join(changed))
     return _list(conn)

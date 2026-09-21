@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth import (
-    client_ip, consume_invite, create_session, destroy_session, get_user_by_email, hash_password,
-    issue_invite, rate_limit, user_to_dict, verify_password,
+    _DUMMY_HASH, _buckets, client_ip, consume_invite, create_session, destroy_session, get_user_by_email,
+    hash_password, issue_invite, rate_limit, user_to_dict, verify_password,
 )
-from ..config import BASE_URL, COOKIE_SECURE, TRUST_PROXY
+from ..config import BASE_URL
 from ..deps import get_conn, get_user
+from ..log import event, hash_email, security
 from ..mailer import email_ready, send_html
 from ..settings import get_settings
 
@@ -34,9 +35,18 @@ class ForgotBody(BaseModel):
 @router.post("/auth/login")
 def login(body: LoginBody, request: Request, response: Response, conn=Depends(get_conn)):
     rate_limit(f"login:{client_ip(request)}", limit=10, window_s=600)
+    acct_key = f"login:acct:{body.email.strip().lower()}"
+    rate_limit(acct_key, limit=5, window_s=900)
     user = get_user_by_email(conn, body.email)
-    if not user or user["disabled"] or not verify_password(body.password, user["password_hash"]):
+    # Always run the argon2 verification, even for an unknown/disabled/passwordless
+    # account, against a fixed dummy hash: this keeps the response time the same
+    # either way, so it cannot be used to enumerate registered addresses.
+    ok = verify_password(body.password, user["password_hash"] if user and user["password_hash"] else _DUMMY_HASH)
+    if not user or user["disabled"] or not user["password_hash"] or not ok:
+        event("login.fail", email_hash=hash_email(body.email), ip=client_ip(request))
         raise HTTPException(401, "Email or password is incorrect.")
+    event("login.ok", user_id=user["id"], ip=client_ip(request))
+    _buckets.pop(acct_key, None)  # a correct password ends the failed-attempt count for this account
     create_session(conn, response, user["id"], request.headers.get("user-agent", ""))
     return user_to_dict(user)
 
@@ -59,6 +69,7 @@ def set_password(body: SetPasswordBody, request: Request, response: Response, co
     conn.execute("UPDATE users SET password_hash=?, disabled=0 WHERE id=?", (hash_password(body.password), user["id"]))
     conn.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))  # log out other devices
     conn.commit()
+    event("setpassword.ok", user_id=user["id"])
     create_session(conn, response, user["id"], request.headers.get("user-agent", ""))
     return user_to_dict(conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone())
 
@@ -68,7 +79,13 @@ def forgot(body: ForgotBody, request: Request, conn=Depends(get_conn)):
     """Always answers 200 so addresses cannot be probed."""
     rate_limit(f"forgot:{client_ip(request)}", limit=5, window_s=3600)
     user = get_user_by_email(conn, body.email)
-    if user and not user["disabled"]:
+    # Only a user who can actually sign in has anything to reset. An invited
+    # user with no password yet still has their original (unused) invite;
+    # issuing a reset here would delete it (issue_invite supersedes any unused
+    # invite for the same user) and hand the attacker a fresh, shorter-lived
+    # token in its place instead of anything usable.
+    if user and not user["disabled"] and user["password_hash"]:
+        event("forgot.requested", user_id=user["id"])
         settings = get_settings(conn)
         if email_ready(settings):
             token = issue_invite(conn, user["id"], hours=2)
@@ -78,28 +95,23 @@ def forgot(body: ForgotBody, request: Request, conn=Depends(get_conn)):
                           f"<p>Someone asked to reset the password for {user['email']} on Lesson Prep.</p>"
                           f"<p><a href='{link}'>Choose a new password</a> (link valid for two hours).</p>"
                           "<p>If that wasn't you, ignore this message.</p>")
-            except Exception:
-                pass
+            except Exception as e:
+                security.warning("forgot.send_failed user_id=%s error=%s", user["id"], type(e).__name__)
     return {"ok": True}
 
 
 def base_url(request: Request) -> str:
     """Origin for links placed in emails.
 
-    Never derived from the Host header on a public deployment: an attacker could
-    request a password reset for a victim with a forged Host and receive the
-    token when the victim clicks the poisoned link. Production sets LP_BASE_URL;
-    on a LAN install without it we use the socket-level address the request
-    actually arrived on, and forwarded headers only when LP_TRUST_PROXY is set.
+    Never derived from the Host header: an attacker could request a password
+    reset for a victim with a forged Host and receive the token when the victim
+    clicks the poisoned link. Production sets LP_BASE_URL (required whenever
+    LP_TRUST_PROXY or LP_COOKIE_SECURE is set — see server/config.py); a LAN
+    install without it falls back to the socket-level address the request
+    actually arrived on.
     """
     if BASE_URL:
-        return BASE_URL.rstrip("/")
-    if COOKIE_SECURE:
-        raise HTTPException(500, "LP_BASE_URL must be set on a public deployment.")
-    if TRUST_PROXY:
-        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host") or request.url.netloc
-        return f"{proto}://{host}"
+        return BASE_URL
     server = request.scope.get("server")
     host = f"{server[0]}:{server[1]}" if server else request.url.netloc
     return f"{request.url.scheme}://{host}"

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from ..config import SETTINGS_DEFAULTS, SECRET_SETTINGS
 from ..deps import get_admin, get_conn, get_user
+from ..log import event
 from ..mailer import send_html, MailConfigError, email_ready, missing_email_setup
 from ..settings import get_settings, set_settings, public_settings
 
@@ -58,6 +59,8 @@ def write_settings(body: SettingsBody, conn=Depends(get_conn), _admin=Depends(ge
             continue
         clean[k] = v.strip() if isinstance(v, str) else v
     set_settings(conn, clean)
+    if clean:
+        event("settings.written", admin_id=_admin["id"], keys=",".join(sorted(clean)))
     return public_settings(conn)
 
 

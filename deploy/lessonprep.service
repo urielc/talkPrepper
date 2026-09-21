@@ -1,0 +1,26 @@
+[Unit]
+Description=Lesson Prep
+After=network.target
+
+[Service]
+User=lessonprep
+Group=lessonprep
+WorkingDirectory=/opt/lessonprep
+EnvironmentFile=/etc/lessonprep.env
+# sentence-transformers downloads the embedding model here on first use; it must be
+# writable under ProtectSystem=strict, so keep it inside LP_DATA_DIR.
+Environment=HF_HOME=/var/lib/lessonprep/hf-cache
+ExecStart=/opt/lessonprep/.venv/bin/python -m server.cli serve --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=2
+
+# Hardening: the app only needs to read its own code and write to LP_DATA_DIR.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lessonprep
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target
