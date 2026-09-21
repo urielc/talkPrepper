@@ -14,6 +14,7 @@ from typing import Iterator
 
 import anthropic
 
+from ..config import DEFAULT_ANTHROPIC_MODEL
 from .base import ChatEvent, Provider, ProviderError, ToolExecutor, ToolSpec
 
 MAX_TOOL_ROUNDS = 8
@@ -24,7 +25,7 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 class AnthropicProvider(Provider):
     name = "anthropic"
 
-    def __init__(self, api_key: str, model: str = "claude-opus-5"):
+    def __init__(self, api_key: str, model: str = DEFAULT_ANTHROPIC_MODEL):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
         self._use_fallbacks = True

@@ -20,7 +20,7 @@ SCRIPTURES_URL = (
 )
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-5"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 # Chunking for embeddings: paragraph-aligned, roughly this many words per chunk.
