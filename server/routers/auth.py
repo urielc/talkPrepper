@@ -9,7 +9,7 @@ from ..auth import (
     client_ip, consume_invite, create_session, destroy_session, get_user_by_email, hash_password,
     issue_invite, rate_limit, user_to_dict, verify_password,
 )
-from ..config import BASE_URL
+from ..config import BASE_URL, COOKIE_SECURE, TRUST_PROXY
 from ..deps import get_conn, get_user
 from ..mailer import email_ready, send_html
 from ..settings import get_settings
@@ -84,8 +84,22 @@ def forgot(body: ForgotBody, request: Request, conn=Depends(get_conn)):
 
 
 def base_url(request: Request) -> str:
+    """Origin for links placed in emails.
+
+    Never derived from the Host header on a public deployment: an attacker could
+    request a password reset for a victim with a forged Host and receive the
+    token when the victim clicks the poisoned link. Production sets LP_BASE_URL;
+    on a LAN install without it we use the socket-level address the request
+    actually arrived on, and forwarded headers only when LP_TRUST_PROXY is set.
+    """
     if BASE_URL:
         return BASE_URL.rstrip("/")
-    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
-    return f"{proto}://{host}"
+    if COOKIE_SECURE:
+        raise HTTPException(500, "LP_BASE_URL must be set on a public deployment.")
+    if TRUST_PROXY:
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.url.netloc
+        return f"{proto}://{host}"
+    server = request.scope.get("server")
+    host = f"{server[0]}:{server[1]}" if server else request.url.netloc
+    return f"{request.url.scheme}://{host}"
