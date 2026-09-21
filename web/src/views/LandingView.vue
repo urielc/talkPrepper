@@ -92,7 +92,7 @@ function posterFallback(e: Event) {
       </div>
 
       <section v-if="featured" class="videos">
-        <h2>Counsel on video</h2>
+        <h2>Proper use of AI in the church</h2>
 
         <div class="feature">
           <div class="player">
