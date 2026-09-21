@@ -33,20 +33,22 @@ sources), `/lessons` page (your lessons + talk picker). The admin `uri@uacconsul
 and can sign in. Email is **not** configured (from-address missing), so invites hand the admin a link.
 
 Content files: `web/src/content/hero.json` (hero + Handbook panel), `web/src/content/landing.md` (columns
-split on `## ` headings; "Sources" renders beneath), `web/src/content/videos.json` (array of
-`{title, speaker, url}`; the video row appears only when non-empty; YouTube ids are parsed from the url and
-shown as img.youtube.com thumbnails linking out).
+split on `## ` headings; "Sources" renders beneath), `web/src/content/videos.json` (see the YouTube note
+below).
 
 Not done from the plan: section 4 (`make ship-index`), 5 (deploy files: `deploy/nginx.conf`,
 `deploy/lessonprep.service`, `deploy/README.md`, `.github/workflows/deploy.yml`), 6 (droplet step 0).
 
-## Next (Uri, 2026-09-21): settings page changes + YouTube links
+## Next (Uri, 2026-09-21): settings page changes
 
-Uri will describe the settings changes and supply YouTube links. Settings page is
+Uri will describe the settings changes. Settings page is
 `web/src/views/SettingsView.vue` (~300 lines: AI provider, email, talk index, appearance sections;
 admin-only; backed by `server/routers/settings.py` with `SETTINGS_DEFAULTS` in `server/config.py`).
-Add links as `videos.json` entries and rebuild (`cd web && npm run build`; the server serves `web/dist`
-statically, no restart needed).
+
+**YouTube link done 2026-09-21:** `videos.json` holds Elder Bednar's "Technology Cannot Replace the
+Divine" (2EY65ZrznJ0). Entries are `{title, speaker, url, blurb?}`. The first entry is featured on the
+landing page as a click-to-play `youtube-nocookie` embed beside its title, speaker and blurb; further
+entries, if added, fall into the old thumbnail grid beneath. Rebuild with `cd web && npm run build`.
 
 ## Still open: related-talks list, tabbed reading, tighter centre margins
 

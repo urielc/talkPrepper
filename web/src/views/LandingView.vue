@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useLessonStore } from '../stores/lesson'
 import { renderMarkdown } from '../utils/markdown'
@@ -10,12 +11,17 @@ interface Video {
   title: string
   speaker: string
   url: string
+  blurb?: string
 }
 
 const lesson = useLessonStore()
 if (!lesson.mineLoaded) lesson.loadMine().catch(() => {})
 
 const videos = (videosJson as Video[]).filter((v) => v.url)
+/** The first video is featured with an in-page player; any others form a row of thumbnails. */
+const featured = videos[0]
+const more = videos.slice(1)
+const playing = ref(false)
 
 /** Split the counsel Markdown on its "## " headings so each section can be placed. */
 interface Section {
@@ -36,9 +42,19 @@ function ytId(url: string): string | null {
   const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/)
   return m ? m[1] : null
 }
-function thumb(url: string): string | null {
+function thumb(url: string, size: 'hqdefault' | 'maxresdefault' = 'hqdefault'): string | null {
   const id = ytId(url)
-  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
+  return id ? `https://img.youtube.com/vi/${id}/${size}.jpg` : null
+}
+/** Privacy-enhanced embed; nothing loads from YouTube until the poster is clicked. */
+function embed(url: string): string | null {
+  const id = ytId(url)
+  return id ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0` : null
+}
+/** maxresdefault is missing for some uploads; fall back to the always-present hqdefault. */
+function posterFallback(e: Event) {
+  const img = e.target as HTMLImageElement
+  if (featured && !img.src.endsWith('hqdefault.jpg')) img.src = thumb(featured.url)!
 }
 </script>
 
@@ -75,10 +91,36 @@ function thumb(url: string): string | null {
         </section>
       </div>
 
-      <section v-if="videos.length" class="videos">
+      <section v-if="featured" class="videos">
         <h2>Counsel on video</h2>
-        <ul class="video-row">
-          <li v-for="v in videos" :key="v.url">
+
+        <div class="feature">
+          <div class="player">
+            <iframe
+              v-if="playing && embed(featured.url)"
+              :src="embed(featured.url)!"
+              :title="featured.title"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allowfullscreen
+            ></iframe>
+            <button v-else type="button" class="poster" :aria-label="`Play: ${featured.title}`" @click="playing = true">
+              <img v-if="thumb(featured.url)" :src="thumb(featured.url, 'maxresdefault')!" alt="" @error="posterFallback" />
+              <span class="play" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="28" height="28"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+              </span>
+            </button>
+          </div>
+          <div class="feature-text">
+            <h3 class="serif">{{ featured.title }}</h3>
+            <p class="f-speaker">{{ featured.speaker }}</p>
+            <p v-if="featured.blurb" class="f-blurb">{{ featured.blurb }}</p>
+            <a :href="featured.url" target="_blank" rel="noopener" class="f-link">Watch on YouTube</a>
+          </div>
+        </div>
+
+        <ul v-if="more.length" class="video-row">
+          <li v-for="v in more" :key="v.url">
             <a :href="v.url" target="_blank" rel="noopener" class="video">
               <img v-if="thumb(v.url)" :src="thumb(v.url)!" :alt="`Watch: ${v.title}`" loading="lazy" />
               <span class="v-title">{{ v.title }}</span>
@@ -231,9 +273,99 @@ function thumb(url: string): string | null {
 .sources {
   margin-top: 3rem;
 }
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 2.5rem;
+  align-items: center;
+  margin-top: 1.25rem;
+}
+.player {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.player iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: #fff;
+}
+.poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4.25rem;
+  height: 4.25rem;
+  margin: -2.125rem 0 0 -2.125rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(11, 46, 89, 0.82);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  transition: background 120ms ease;
+}
+.play svg {
+  margin-left: 3px;
+}
+.poster:hover .play,
+.poster:focus-visible .play {
+  background: var(--gold);
+}
+.poster:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus);
+}
+.feature-text h3 {
+  font-size: var(--fs-4);
+  line-height: 1.2;
+  font-weight: 600;
+  max-width: 22ch;
+}
+.f-speaker {
+  margin-top: 0.4rem;
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.f-blurb {
+  margin-top: 1rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 48ch;
+}
+.f-link {
+  display: inline-block;
+  margin-top: 1.1rem;
+  color: var(--blue-2);
+  font-size: var(--fs-1);
+  border-bottom: 1px solid currentColor;
+}
+.f-link:hover {
+  text-decoration: none;
+  color: var(--gold-2);
+}
 .video-row {
   list-style: none;
-  margin: 0;
+  margin: 2rem 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -281,6 +413,10 @@ function thumb(url: string): string | null {
   .columns {
     grid-template-columns: 1fr;
     gap: 2rem;
+  }
+  .feature {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
   }
   .sources .md {
     columns: 1;
