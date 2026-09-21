@@ -2,7 +2,7 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## As of 2026-09-21 (evening)
+## As of 2026-09-21 (night)
 
 **Digest feature:** committed 2026-09-15 (87db893) after a real end-to-end run with Sonnet 5 on 2026-09-11 (31 tests green). Working tree clean as of 2026-09-20.
 
@@ -24,7 +24,7 @@ as before. Swapped into `data/general_conference_talks.json`, index rebuilt (42 
 built_at 2026-09-20T17:21:35) and server restarted the same evening; older talks now show numbered notes
 (e.g. 2025-10/32dennis has 35 marked notes). Nothing pending here.
 
-## Multi-user + hosting (plan approved 2026-09-21; sections 1–3 done, 4–6 not started)
+## Multi-user + hosting (plan approved 2026-09-21; done, see Production)
 
 Done 2026-09-21, all committed and pushed to github.com/urielc/talkPrepper (`main`, last commit 315ff61):
 accounts, sessions, invites, per-user notes/pins/chats/My lessons, admin Settings/Users pages, landing page
@@ -36,19 +36,47 @@ Content files: `web/src/content/hero.json` (hero + Handbook panel), `web/src/con
 split on `## ` headings; "Sources" renders beneath), `web/src/content/videos.json` (see the YouTube note
 below).
 
-Not done from the plan: section 4 (`make ship-index`), 5 (deploy files: `deploy/nginx.conf`,
-`deploy/lessonprep.service`, `deploy/README.md`, `.github/workflows/deploy.yml`), 6 (droplet step 0).
+Section 4 (`make ship-index`) was dropped: the index is copied with `data/` instead. Sections 5–6 landed
+2026-09-21 evening (deploy files, workflow, droplet), see Production.
 
-## Next (Uri, 2026-09-21): settings page changes
+## Next (Uri, 2026-09-21 night): change the LLM model, redo the landing page
 
-Uri will describe the settings changes. Settings page is
-`web/src/views/SettingsView.vue` (~300 lines: AI provider, email, talk index, appearance sections;
-admin-only; backed by `server/routers/settings.py` with `SETTINGS_DEFAULTS` in `server/config.py`).
+1. **LLM model.** Today the Settings page (admin) picks `anthropic_model`; default `claude-opus-5` in
+   `server/config.py`, and Uri's stored choice was `claude-sonnet-5`. Uri will say which model; change the
+   default and/or the stored setting (production and LAN databases are separate copies).
+2. **Landing page** (`web/src/views/LandingView.vue`, content in `web/src/content/{hero.json,landing.md,videos.json}`):
+   move the featured video up (today it sits under the three counsel columns), and turn the three
+   columns ("What this tool is for", "What it is not for", "What Church leaders have said", split from
+   `landing.md` on `## ` headings) into a collapsible list to the right of the video, so little remains
+   below the fold. "Sources" stays beneath. Hazards: the CSP blocks inline scripts (see the screenshot
+   recipe in memory); `landing.md` is a build-time asset rendered with `v-html` via the sanitised
+   `renderMarkdown`; the video poster/iframe hosts are whitelisted in `server/middleware.py` CSP.
+   Rebuild with `cd web && npm run build`; production gets it via the pipeline (once the CI key is
+   authorised) or a manual pull + `rsync web/dist/`.
 
-**YouTube link done 2026-09-21:** `videos.json` holds Elder Bednar's "Technology Cannot Replace the
-Divine" (2EY65ZrznJ0). Entries are `{title, speaker, url, blurb?}`. The first entry is featured on the
-landing page as a click-to-play `youtube-nocookie` embed beside its title, speaker and blurb; further
-entries, if added, fall into the old thumbnail grid beneath. Rebuild with `cd web && npm run build`.
+## Production (deployed 2026-09-21 evening)
+
+**https://lessonprep.chinstrapsoftware.com**, on a small shared droplet (Ubuntu 24.04, nginx 1.24, 2 GB
+RAM) alongside other sites. Access details live in Uri's private notes, not in this public repo.
+
+- Layout follows `deploy/README.md`: code in `/opt/lessonprep` (git clone, service user `lessonprep`,
+  venv, CPU torch), data in `/var/lib/lessonprep` (copy of the LAN `data/` taken 2026-09-21, same Fernet
+  `secret.key`, bge-small model pre-seeded in `hf-cache/`), unit `lessonprep.service`, vhost per
+  `deploy/nginx.conf`, certificate via `certbot certonly --nginx`.
+- Production runs commit 37a1821 (deployed by hand 2026-09-21 night). Verified over HTTPS: redirect, HSTS,
+  CSP, traversal blocked, per-account 429 then nginx 503 on `/api/auth/`, SSE proxying unbuffered.
+- **CD not yet active:** `.github/workflows/deploy.yml` has its secrets/variables set, the test job passes,
+  but the deploy job fails at SSH because the CI public key is not authorised on the server. Uri has a
+  script for that one-time step (login shell for `lessonprep`, `authorized_keys`, sudoers for
+  `systemctl restart lessonprep`). Until then deploy by hand as root: pull as `lessonprep`, rsync
+  `web/dist/`, `systemctl restart lessonprep`.
+- Email is **not configured** in production; a temporary admin password was set directly in the DB on
+  2026-09-21 and Uri was to change it via the new Change password page (`/account`).
+- Open from the security review: rotate the Anthropic key exposed before the traversal fix, quotas (F-07),
+  SSRF allowlist (F-13), recipient policy for emailed notes, memory footprint once the embedding model loads
+  on the droplet (unmeasured).
+- The LAN instance on this machine keeps running separately (started 2026-09-21 midday on commit 2106939);
+  the two databases diverge from 2026-09-21.
 
 ## Still open: related-talks list, tabbed reading, tighter centre margins
 
