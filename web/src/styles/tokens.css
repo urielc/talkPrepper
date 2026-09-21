@@ -31,8 +31,12 @@
   --fs-5: 2rem;
 
   --reader-width: 46rem;
-  --research-w: 380px;
-  --notes-w: 400px;
+  /* Side columns grow with the window instead of leaving the surplus in the
+     middle, which cannot use it: the reader caps its text at --reader-width.
+     The floors are the old fixed widths, so nothing changes at the 1400px
+     breakpoint where the third column appears. */
+  --research-w: clamp(380px, 26vw, 560px);
+  --notes-w: clamp(400px, 27vw, 580px);
   --ai-w: 480px;
   --header-h: 56px;
   --radius: 4px;

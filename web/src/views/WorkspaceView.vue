@@ -166,11 +166,11 @@ onBeforeUnmount(endDrag)
 }
 .reader-pane {
   overflow: auto;
-  padding: 1.75rem 3rem 3rem;
+  padding: 1.5rem 1.75rem 3rem;
 }
 .digest-pane {
   overflow: auto;
-  padding: 0.75rem 3rem 3rem;
+  padding: 0.75rem 1.75rem 3rem;
   background: var(--paper);
 }
 .splitter {
@@ -253,8 +253,8 @@ h1 {
   }
   .reader-pane,
   .digest-pane {
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
   }
 }
 
