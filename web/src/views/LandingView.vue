@@ -411,6 +411,10 @@ function posterFallback(e: Event) {
 .md :deep(p:last-child) {
   margin-bottom: 0;
 }
+/* The lists carry no bottom margin, so a paragraph following one sets its own gap. */
+.md :deep(ul + p) {
+  margin-top: 0.85rem;
+}
 .md :deep(a) {
   color: var(--blue-2);
 }
