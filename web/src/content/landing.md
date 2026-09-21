@@ -1,5 +1,7 @@
 ## What this tool is for
 
+The lion's share of preparing a lesson happens in your own reading of the talk, your prayers about the people in the room, and the impressions that follow. Lesson Prep gathers the surrounding talks and scriptures and keeps your thoughts and insights in one place. It does not do the preparing.
+
 - Reading the assigned talk with every scripture reference in place
 - Finding other conference talks and passages on the same themes
 - Seeing the talk's outline, its quotable lines and questions that could open a discussion

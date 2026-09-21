@@ -86,8 +86,8 @@ function posterFallback(e: Event) {
   <div class="landing">
     <section class="hero">
       <div class="hero-inner">
-        <h1>{{ hero.title }}</h1>
-        <p class="lede">{{ hero.subtitle }}</p>
+        <h1 class="quote">&ldquo;{{ hero.quote }}&rdquo;</h1>
+        <p class="attrib">&mdash; {{ hero.attribution }}</p>
       </div>
     </section>
 
@@ -199,23 +199,19 @@ function posterFallback(e: Event) {
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 2.5rem;
-  align-items: center;
 }
-.hero-inner h1 {
+.quote {
   color: #fff;
-  font-size: clamp(1.5rem, 2.2vw, 2.1rem);
-  line-height: 1.15;
+  font-size: clamp(1.2rem, 1.75vw, 1.6rem);
+  line-height: 1.3;
   letter-spacing: -0.01em;
-  max-width: 24ch;
+  max-width: 62ch;
+  text-wrap: balance;
 }
-.lede {
+.attrib {
+  margin-top: 0.6rem;
   font-size: var(--fs-1);
-  line-height: 1.5;
-  max-width: 52ch;
-  color: rgba(255, 255, 255, 0.85);
+  color: #e6d9a8;
 }
 
 /* ---- menu bar */
@@ -259,8 +255,8 @@ function posterFallback(e: Event) {
 }
 .stage {
   /* What is left of the viewport under the topbar, hero strip, menu bar and the caption. */
-  --stage-h: clamp(200px, calc(100vh - 26rem), 460px);
-  --stage-h: clamp(200px, calc(100svh - 26rem), 460px);
+  --stage-h: clamp(200px, calc(100vh - 27rem), 460px);
+  --stage-h: clamp(200px, calc(100svh - 27rem), 460px);
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: 2rem;
@@ -495,8 +491,6 @@ function posterFallback(e: Event) {
 }
 @media (max-width: 760px) {
   .hero-inner {
-    grid-template-columns: 1fr;
-    gap: 0.9rem;
     padding: 1.5rem 1.25rem;
   }
   .menubar-inner,
