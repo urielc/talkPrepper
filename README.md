@@ -10,17 +10,49 @@ A local study and preparation tool for leading elders quorum discussions built o
 
 Backend: Python / FastAPI / SQLite (FTS5) / sentence-transformers. Frontend: Vue 3 + Vite.
 
-## Setup
+## Setup from a fresh clone
+
+Requirements: Python 3.11+ (3.14 tested), Node 20+, about 3 GB of disk (CPU torch is the bulk), and a
+network connection for the first three steps. The talk text, scriptures, database and embeddings are not
+in the repository; the steps below create them.
 
 ```bash
-pip install -r requirements.txt          # CPU torch is fine: pip install --index-url https://download.pytorch.org/whl/cpu torch
-cd web && npm install && cd ..
+git clone https://github.com/urielc/talkPrepper.git && cd talkPrepper
 
-python -m server.cli download-scriptures  # public-domain KJV / Book of Mormon / D&C / PoGP (18 MB)
-python -m server.cli index                # builds data/app.db + embeddings (a few minutes on CPU the first time)
+# 1. Python dependencies (CPU-only torch keeps the download at ~200 MB)
+pip install --index-url https://download.pytorch.org/whl/cpu torch
+pip install -r requirements.txt
+
+# 2. Frontend dependencies and production build
+cd web && npm install && npm run build && cd ..
+
+# 3. Talk text: scrape all General Conference talks since 1971 into data/general_conference_talks.json
+#    (one request per second out of courtesy to the site; expect 2–3 hours)
+python3 scrape_conference_talks.py
+
+# 4. Standard works (public-domain JSON, 18 MB)
+python -m server.cli download-scriptures
+
+# 5. Build the search index and embeddings (several minutes on CPU; downloads the bge-small model once)
+python -m server.cli index
+
+# 6. Create your admin account; prints a link to set your password
+python -m server.cli migrate --admin-email you@example.com --name "Your Name"
+
+# 7. Run it
+python -m server.cli serve            # http://127.0.0.1:8765
 ```
 
-The index needs `data/general_conference_talks.json`, produced by the scraper (see below).
+Open the set-password link from step 6, sign in, then go to **Settings** in the account menu to enter an
+Anthropic API key (or point at an Ollama model) and, optionally, email details for invitations and for
+mailing your notes. Nothing works without step 6: every page except the health check requires a signed-in
+user.
+
+Keeping the talks current after a new conference:
+
+```bash
+make update-talks    # scrapes only conferences missing from the JSON, then rebuilds the index
+```
 
 ## Run
 
@@ -59,28 +91,6 @@ Environment variables for a server deployment (all optional locally): `LP_DATA_D
 Open Settings in the app to enter an Anthropic API key (or pick an Ollama model) and, optionally, email details for sending your notes: a Postmark server token plus a verified sender address (default), or any SMTP server. Settings live in `data/app.db`, not in environment files.
 
 The app uses port 8765 for the API because 8000 was taken on the development machine; change it in `dev.sh`, `web/vite.config.ts` and `server/cli.py` if you prefer another.
-
-## Getting the talks
-
-```bash
-python3 scrape_conference_talks.py            # full scrape of all conferences (hours; 1 request/second)
-python3 scrape_conference_talks.py --update   # only conferences missing from the JSON (e.g. after a new conference)
-python -m server.cli index                    # then rebuild the index (or use Settings → Rebuild index)
-```
-
-Output goes to `data/general_conference_talks.json`:
-
-```json
-{
-  "metadata": {"scraped_date": "...", "total_conferences": 111, "total_talks": 4267},
-  "conferences": {
-    "https://www.churchofjesuschrist.org/study/general-conference/2026/04?lang=eng": {
-      "url": "...", "talk_count": 37,
-      "talks": [{"speaker": "...", "title": "...", "content": "...", "paragraphs": ["..."], "url": "..."}]
-    }
-  }
-}
-```
 
 ## Project layout
 
