@@ -68,30 +68,33 @@ to copy a working `data/` directory over than to run the multi-hour scrape on a 
 
 7. **Certificate, then nginx**
 
-   `nginx.conf` already points at the Let's Encrypt paths, so obtain the certificate before enabling the
-   site (nginx refuses a config whose certificate files do not exist yet):
+   `nginx.conf` points at the Let's Encrypt paths, so obtain the certificate before enabling the full
+   site. On a box where nginx already serves other sites, enable a port-80 stub for the hostname first
+   and let certbot's nginx plugin answer the challenge through it (nothing is stopped):
 
    ```bash
-   sudo systemctl stop nginx
-   sudo certbot certonly --standalone -d your.domain.example
-   sudo systemctl start nginx
+   printf 'server {\n    listen 80;\n    listen [::]:80;\n    server_name your.domain.example;\n    location / { return 404; }\n}\n' \
+       | sudo tee /etc/nginx/sites-available/lessonprep >/dev/null
+   sudo ln -s /etc/nginx/sites-available/lessonprep /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo certbot certonly --nginx -d your.domain.example
    sudo cp deploy/nginx.conf /etc/nginx/sites-available/lessonprep
    sudo sed -i 's/CHANGE.ME/your.domain.example/' /etc/nginx/sites-available/lessonprep
-   sudo ln -s /etc/nginx/sites-available/lessonprep /etc/nginx/sites-enabled/
    sudo nginx -t && sudo systemctl reload nginx
    ```
 
-   Standalone renewals need port 80, so give certbot hooks that stop and start nginx around them:
-
-   ```bash
-   printf '#!/bin/sh\nsystemctl stop nginx\n'  | sudo tee /etc/letsencrypt/renewal-hooks/pre/nginx.sh
-   printf '#!/bin/sh\nsystemctl start nginx\n' | sudo tee /etc/letsencrypt/renewal-hooks/post/nginx.sh
-   sudo chmod +x /etc/letsencrypt/renewal-hooks/pre/nginx.sh /etc/letsencrypt/renewal-hooks/post/nginx.sh
-   sudo certbot renew --dry-run
-   ```
+   Renewals then go through the nginx plugin automatically (`sudo certbot renew --dry-run` to confirm).
+   `nginx.conf` targets nginx 1.24 (Ubuntu 24.04); on 1.25+ you may add `http2 on;` to the 443 block.
 
 8. **Firewall**: only 80/443 need to be open to the internet; 8765 should not be (the systemd unit already
    binds it to 127.0.0.1 only).
+
+   **Continuous deployment** (`.github/workflows/deploy.yml`): every push to `main` runs the tests, builds the
+   frontend, and over SSH as the service user pulls the code, syncs `web/dist`, installs Python deps and
+   restarts the unit. One-time setup: give `lessonprep` a login shell and an `authorized_keys` entry for a
+   dedicated CI key, allow `lessonprep ALL=(root) NOPASSWD: /usr/bin/systemctl restart lessonprep` in
+   sudoers, and set the repository secrets `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` and variables
+   `DEPLOY_HOST`, `DEPLOY_USER`.
 
 9. **Verify**: load `https://your.domain.example`, sign in with the admin link from step 5, and confirm
    `curl -sI https://your.domain.example/api/health` shows the security headers and no `server:` header.

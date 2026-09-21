@@ -1,0 +1,86 @@
+name: Deploy
+
+# Every push to main: run the tests, build the frontend, sync code and build to the
+# server over SSH, install Python deps there, restart the service, check health.
+#
+# Secrets (repo → Settings → Secrets and variables → Actions):
+#   DEPLOY_SSH_KEY     private key whose public half is in the service user's authorized_keys
+#   DEPLOY_KNOWN_HOSTS one `ssh-keyscan` line for the server, so the runner trusts its host key
+# Variables:
+#   DEPLOY_HOST        server address (IP or hostname)
+#   DEPLOY_USER        the service user (owns /opt/lessonprep and may `sudo systemctl restart lessonprep`)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install (CPU torch)
+        run: |
+          pip install -q --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -q -r requirements.txt
+      - run: python -m pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build frontend
+        run: cd web && npm ci && npm run build
+
+      - name: SSH setup
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy
+            HostName ${{ vars.DEPLOY_HOST }}
+            User ${{ vars.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+          EOF
+
+      - name: Sync code
+        run: |
+          ssh deploy 'cd /opt/lessonprep && git fetch -q origin main && git reset -q --hard origin/main && git log --oneline -1'
+
+      - name: Sync frontend build
+        run: rsync -az --delete web/dist/ deploy:/opt/lessonprep/web/dist/
+
+      - name: Install Python deps
+        run: |
+          ssh deploy 'cd /opt/lessonprep && .venv/bin/pip install -q --index-url https://download.pytorch.org/whl/cpu torch && .venv/bin/pip install -q -r requirements.txt'
+
+      - name: Restart and check health
+        run: |
+          ssh deploy 'sudo systemctl restart lessonprep'
+          for i in $(seq 1 15); do
+            if ssh deploy 'curl -sf http://127.0.0.1:8765/api/health' ; then echo; echo "healthy"; exit 0; fi
+            sleep 2
+          done
+          ssh deploy 'sudo systemctl status lessonprep --no-pager | tail -20' || true
+          echo "service did not become healthy" >&2
+          exit 1
