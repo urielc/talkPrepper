@@ -78,7 +78,7 @@ blurb falls below the fold. The counsel column is capped and scrolls internally 
 panels does not push the page down.
 
 Verified with headless screenshots at 1440x900, 1366x768 and 420x860, light and dark, panels open and
-closed. Rebuilt `web/dist`; production still needs a manual `rsync web/dist/` until the CI key is authorised.
+closed. Rebuilt `web/dist`; production now deploys on push.
 
 ## Citation checking, editable match terms, wider side columns (done 2026-09-21 night)
 
@@ -118,12 +118,11 @@ RAM) alongside other sites. Access details live in Uri's private notes, not in t
 - Production runs e5f6a4a, deployed by hand 2026-09-21 ~24:00 and restarted after the backend changes;
   `/api/health` green. Earlier checks (2026-09-21 evening, on 37a1821): redirect, HSTS, CSP, traversal
   blocked, per-account 429 then nginx 503 on `/api/auth/`, SSE proxying unbuffered.
-- **CD not yet active:** `.github/workflows/deploy.yml` has its secrets/variables set, the test job passes,
-  but the deploy job fails at SSH because the CI public key is not authorised on the server — still true
-  on the 2026-09-21 23:58 UTC run (35669964530: `lessonprep@…: Permission denied (publickey)`). Uri has a
-  script for that one-time step (login shell for `lessonprep`, `authorized_keys`, sudoers for
-  `systemctl restart lessonprep`). Until then deploy by hand as root: pull as `lessonprep`, rsync
-  `web/dist/`, `systemctl restart lessonprep`.
+- **CD active since 2026-09-22** (run 35689605800 green): the CI key is authorised for `lessonprep`,
+  which has a login shell and a sudoers rule for exactly `systemctl restart lessonprep` and
+  `systemctl status lessonprep` (no extra arguments). Every push to `main` now tests, deploys, restarts
+  and health-checks. The manual deploy as root (pull as `lessonprep`, rsync `web/dist/`, restart) is the
+  fallback.
 - Email is **not configured** in production; a temporary admin password was set directly in the DB on
   2026-09-21 and Uri was to change it via the new Change password page (`/account`).
 - Open from the security review: rotate the Anthropic key exposed before the traversal fix, quotas (F-07),
