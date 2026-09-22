@@ -14,6 +14,14 @@ const error = ref<string | null>(null)
 const decade = ref('')
 const speaker = ref('')
 
+/** Hits the reader has expanded. Held in memory only, so a refresh or a new talk starts collapsed. */
+const expanded = ref(new Set<string>())
+function toggle(id: string) {
+  const next = new Set(expanded.value)
+  if (!next.delete(id)) next.add(id)
+  expanded.value = next
+}
+
 /** Editing the match terms re-aims this search only; the talk's own terms are untouched. */
 const editing = ref(false)
 const draft = ref('')
@@ -41,6 +49,7 @@ watch(
   () => {
     editing.value = false
     custom.value = false
+    expanded.value = new Set()
     run()
   },
   { immediate: true },
@@ -121,7 +130,14 @@ function aside(h: Hit): string | undefined {
     <ul v-else class="result-list">
       <li v-for="h in filtered" :key="h.talk_id">
         <div class="score" :style="{ width: Math.round(h.score * 100) + '%' }"></div>
-        <TalkListItem :talk="h.talk!" :snippets="h.snippets" :aside="aside(h)" />
+        <TalkListItem
+          :talk="h.talk!"
+          :snippets="h.snippets"
+          :aside="aside(h)"
+          collapsible
+          :expanded="expanded.has(h.talk_id)"
+          @toggle="toggle(h.talk_id)"
+        />
       </li>
     </ul>
   </div>

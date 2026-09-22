@@ -2,24 +2,15 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## Next (Uri, 2026-09-21 night): accordion for related talks
+## Related-talks accordion (done 2026-09-21 night, uncommitted)
 
-Too much scrolling in the Related talks list. Apply the front page's accordion idea to it: each hit
-collapses to **title, speaker and conference**; the reader expands whichever ones they want to see the
-snippets (and the "N shared scriptures" aside). This supersedes item 1 of "Still open" below, which
-wanted the extras gone entirely — now they are kept, one click away.
-
-Where it lives: `web/src/components/RelatedSection.vue` renders each hit through
-`web/src/components/TalkListItem.vue` (props `snippets?`, `aside?`; also used by `ResearchColumn.vue`
-search results, `ScripturePanel.vue` and `ScripturesSection.vue`, so make the collapse opt-in rather than
-changing its default). The landing page accordion (`web/src/views/LandingView.vue`: one `openKey`,
-`.section-head` classes from `base.css`, gold left bar on the open item) is the pattern to borrow.
-
-Not yet decided — ask before building:
-- **One open at a time** (like the landing page) **or any number**? "Expand what they wish" reads like
-  any number, but the landing page is single-open.
-- **Remembered or not?** The landing page keeps its open panel in `localStorage` (`lp.landing.open`).
-  Related-talk hits change per talk and per search, so per-session state is probably enough.
+Each Related talks hit collapses to title, speaker and conference; a chevron left of the title shows the
+snippets and the "N shared scriptures" aside. Clicking the title still opens the drawer. Uri's answers:
+**any number open**, and **not remembered** (in-memory `Set` in `RelatedSection.vue`; a refresh or a new
+lesson talk starts all collapsed; re-matching with edited terms keeps hits that recur open). The collapse
+is opt-in on `TalkListItem.vue` (`collapsible` + `expanded` props, `toggle` event), so search results and
+scripture panels are unchanged. Open items get the landing page's gold left bar. `web/dist` rebuilt;
+verified by headless screenshot (40 hits, two expanded).
 
 ## As of 2026-09-21 (night)
 
