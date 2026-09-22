@@ -2,7 +2,7 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## Related-talks accordion (done 2026-09-21 night, uncommitted)
+## Related-talks accordion (done 2026-09-21 night, bf6dcba, deployed)
 
 Each Related talks hit collapses to title, speaker and conference; a chevron left of the title shows the
 snippets and the "N shared scriptures" aside. Clicking the title still opens the drawer. Uri's answers:
@@ -12,13 +12,13 @@ is opt-in on `TalkListItem.vue` (`collapsible` + `expanded` props, `toggle` even
 scripture panels are unchanged. Open items get the landing page's gold left bar. `web/dist` rebuilt;
 verified by headless screenshot (40 hits, two expanded).
 
-## Delete from "Other talks with notes" (done 2026-09-21 night, uncommitted)
+## Delete from "Other talks with notes" (done 2026-09-21 night, 4fd2efb, deployed)
 
 A talk stayed in that list after its notes and pins were deleted, because the list also counts AI chats
 and counted whitespace-only notes. Each entry now has **Delete**, which sets `lessons.hidden_at`
 (`POST /api/lessons/{id}/hide`; column added by `apply_schema` at startup). Nothing is deleted. Adding a pin
 or non-blank notes clears the flag and brings it back. The list also ignores whitespace-only notes now.
-Backend change: the LAN server and production need a restart after deploy.
+Production and the LAN server were restarted with it.
 
 ## As of 2026-09-21 (night)
 
