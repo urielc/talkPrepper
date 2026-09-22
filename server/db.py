@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS lessons (
     notes_md   TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    hidden_at  TEXT,                         -- set when the user clears it from "Other talks with notes"
     PRIMARY KEY (user_id, talk_id)
 );
 

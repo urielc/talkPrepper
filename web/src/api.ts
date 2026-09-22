@@ -276,6 +276,7 @@ export const api = {
 
   lessons: () =>
     get<{ talk: TalkSummary; updated_at: string; notes_len: number; pin_count: number; chat_count: number }[]>('/lessons'),
+  hideLesson: (talkId: string) => post<{ ok: boolean }>(`/lessons/${talkId}/hide`, {}),
   lesson: (talkId: string) => get<Lesson>(`/lessons/${talkId}`),
   saveNotes: (talkId: string, notes_md: string) => put<Lesson>(`/lessons/${talkId}`, { notes_md }),
   addPin: (talkId: string, pin: Partial<Pin> & { kind: Pin['kind'] }) => post<Pin[]>(`/lessons/${talkId}/pins`, pin),

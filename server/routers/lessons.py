@@ -70,10 +70,11 @@ def load_pins(conn: sqlite3.Connection, uid: int, talk_id: str) -> list[dict]:
 @router.get("/lessons")
 def list_lessons(conn=Depends(get_conn), user=Depends(get_user)):
     rows = conn.execute(
-        "SELECT l.talk_id, l.updated_at, LENGTH(l.notes_md) AS notes_len, "
+        "SELECT l.talk_id, l.updated_at, LENGTH(TRIM(l.notes_md, ' ' || char(9, 10, 13))) AS notes_len, "
         "(SELECT COUNT(*) FROM pins p WHERE p.talk_id=l.talk_id AND p.user_id=l.user_id) AS pin_count, "
         "(SELECT COUNT(*) FROM chat_sessions s WHERE s.talk_id=l.talk_id AND s.user_id=l.user_id) AS chat_count "
-        "FROM lessons l WHERE l.user_id=? ORDER BY l.updated_at DESC LIMIT 50", (user["id"],)).fetchall()
+        "FROM lessons l WHERE l.user_id=? AND l.hidden_at IS NULL ORDER BY l.updated_at DESC LIMIT 50",
+        (user["id"],)).fetchall()
     talks = fetch_talks(conn, [r["talk_id"] for r in rows])
     out = []
     for r in rows:
@@ -113,6 +114,14 @@ def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn), user=Dep
         raise HTTPException(502, "Sending failed. Check the email settings or try again later.")
     event("email.sent", user_id=user["id"], recipients=len(body.to))
     return {"ok": True, "to": body.to, "subject": subject, **info}
+
+
+@router.post("/lessons/{talk_id:path}/hide")
+def hide_lesson(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
+    """Clear a talk from "Other talks with notes". Nothing is deleted; new notes or pins bring it back."""
+    conn.execute("UPDATE lessons SET hidden_at=datetime('now') WHERE user_id=? AND talk_id=?", (user["id"], talk_id))
+    conn.commit()
+    return {"ok": True}
 
 
 @router.post("/lessons/{talk_id:path}/pins/reorder")
@@ -175,6 +184,7 @@ def add_pin(talk_id: str, body: PinBody, conn=Depends(get_conn), user=Depends(ge
         "INSERT INTO pins(user_id, talk_id, kind, ref_talk_id, ref_paragraph_id, scripture_ref, text, note, ord) "
         "VALUES(?,?,?,?,?,?,?,?,?)",
         (uid, talk_id, body.kind, body.ref_talk_id, body.ref_paragraph_id, body.scripture_ref, text, body.note, ord_))
+    conn.execute("UPDATE lessons SET hidden_at=NULL WHERE user_id=? AND talk_id=?", (uid, talk_id))
     touch(conn, uid, talk_id)
     return load_pins(conn, uid, talk_id)
 
@@ -200,8 +210,9 @@ def put_notes(talk_id: str, body: NotesBody, conn=Depends(get_conn), user=Depend
     uid = user["id"]
     get_talk_or_404(conn, talk_id)
     ensure_lesson(conn, uid, talk_id)
-    conn.execute("UPDATE lessons SET notes_md=?, updated_at=datetime('now') WHERE user_id=? AND talk_id=?",
-                 (body.notes_md, uid, talk_id))
+    conn.execute("UPDATE lessons SET notes_md=?, updated_at=datetime('now'), "
+                 "hidden_at=CASE WHEN TRIM(?, ' ' || char(9, 10, 13)) = '' THEN hidden_at END WHERE user_id=? AND talk_id=?",
+                 (body.notes_md, body.notes_md, uid, talk_id))
     conn.commit()
     return lesson_for(conn, uid, talk_id)
 

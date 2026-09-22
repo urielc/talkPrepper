@@ -12,6 +12,14 @@ is opt-in on `TalkListItem.vue` (`collapsible` + `expanded` props, `toggle` even
 scripture panels are unchanged. Open items get the landing page's gold left bar. `web/dist` rebuilt;
 verified by headless screenshot (40 hits, two expanded).
 
+## Delete from "Other talks with notes" (done 2026-09-21 night, uncommitted)
+
+A talk stayed in that list after its notes and pins were deleted, because the list also counts AI chats
+and counted whitespace-only notes. Each entry now has **Delete**, which sets `lessons.hidden_at`
+(`POST /api/lessons/{id}/hide`; column added by `apply_schema` at startup). Nothing is deleted. Adding a pin
+or non-blank notes clears the flag and brings it back. The list also ignores whitespace-only notes now.
+Backend change: the LAN server and production need a restart after deploy.
+
 ## As of 2026-09-21 (night)
 
 **Git:** `main` at e5f6a4a, in sync with github.com/urielc/talkPrepper. All commits authored as

@@ -57,6 +57,16 @@ const shown = computed(() => results.value ?? talks.value)
 const currentConf = computed(() => conferences.value.find((c) => c.id === conferenceId.value))
 const firstName = computed(() => (auth.user?.name || '').split(' ')[0])
 
+/** Clears a talk from "Other talks with notes"; the talk and anything left on it stay. */
+async function hideOther(talkId: string) {
+  try {
+    await api.hideLesson(talkId)
+    others.value = others.value.filter((r) => r.talk.id !== talkId)
+  } catch (e: any) {
+    error.value = e.message
+  }
+}
+
 function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boolean }): string {
   const parts: string[] = []
   if (m.notes_len) parts.push('notes')
@@ -90,11 +100,19 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
       <template v-if="others.length">
         <h3>Other talks with notes</h3>
         <ul class="plain">
-          <li v-for="r in others" :key="r.talk.id">
+          <li v-for="r in others" :key="r.talk.id" class="other">
             <RouterLink :to="talkRoute(r.talk.id)" class="talk">
               <span class="talk-title">{{ r.talk.title }}</span>
               <span class="talk-meta">{{ r.talk.speaker }}, {{ r.talk.conference }}</span>
             </RouterLink>
+            <button
+              class="quiet small"
+              title="Clear from this list. The talk is not deleted, and new notes or pins bring it back."
+              :aria-label="`Delete ${r.talk.title} from this list`"
+              @click="hideOther(r.talk.id)"
+            >
+              Delete
+            </button>
           </li>
         </ul>
       </template>
@@ -237,6 +255,18 @@ h3 {
 }
 .plain li + li {
   border-top: 1px solid var(--rule);
+}
+.other {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.other .talk {
+  flex: 1;
+  min-width: 0;
+}
+.other button {
+  flex-shrink: 0;
 }
 .talk {
   display: block;

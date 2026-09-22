@@ -90,6 +90,52 @@ def test_scoping_between_users(client):
     assert len(client.get("/api/lessons/2026-04/a").json()["pins"]) == 1
 
 
+def test_hide_from_other_talks_list(client):
+    make_user(client, "a@example.com")
+    make_user(client, "b@example.com")
+    login(client, "b@example.com")
+    client.put("/api/lessons/2026-04/a", json={"notes_md": "B's notes"})
+    client.post("/api/auth/logout")
+
+    login(client, "a@example.com")
+    listed = lambda: [r["talk"]["id"] for r in client.get("/api/lessons").json()]
+    # whitespace left behind after clearing notes does not count as notes
+    client.put("/api/lessons/2026-04/a", json={"notes_md": "\n\n  "})
+    assert listed() == []
+
+    client.put("/api/lessons/2026-04/a", json={"notes_md": "kept"})
+    assert listed() == ["2026-04/a"]
+    assert client.post("/api/lessons/2026-04/a/hide").status_code == 200
+    assert listed() == []
+    assert client.get("/api/lessons/2026-04/a").json()["notes_md"] == "kept"  # nothing deleted
+    client.put("/api/lessons/2026-04/a", json={"notes_md": "  "})
+    assert listed() == []  # blank edits keep it hidden
+    client.post("/api/lessons/2026-04/a/pins", json={"kind": "note", "text": "new"})
+    assert listed() == ["2026-04/a"]  # new content brings it back
+    client.post("/api/lessons/2026-04/a/hide")
+    client.put("/api/lessons/2026-04/a", json={"notes_md": "more"})
+    assert listed() == ["2026-04/a"]
+    client.post("/api/auth/logout")
+
+    login(client, "b@example.com")  # A's hide is A's alone
+    assert [r["talk"]["id"] for r in client.get("/api/lessons").json()] == ["2026-04/a"]
+
+
+def test_migration_adds_hidden_at(tmp_path):
+    from server import db as dbm
+    from server.migrate import apply_schema
+    conn = dbm.connect(tmp_path / "old.db")
+    conn.executescript("""
+        CREATE TABLE lessons(user_id INTEGER, talk_id TEXT NOT NULL, notes_md TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, talk_id));
+        INSERT INTO lessons(user_id, talk_id, notes_md) VALUES(1, '2026-04/a', 'x');
+    """)
+    assert "lessons: added hidden_at" in apply_schema(conn)
+    assert conn.execute("SELECT hidden_at FROM lessons").fetchone()["hidden_at"] is None
+    assert "lessons: added hidden_at" not in apply_schema(conn)
+
+
 def test_invite_flow(client):
     make_user(client, "admin@example.com", admin=True)
     login(client, "admin@example.com")

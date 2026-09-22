@@ -52,6 +52,10 @@ def apply_schema(conn: sqlite3.Connection) -> list[str]:
             conn.execute(sql)
             done.append(f"{table}: added user_id")
 
+    if _table_exists(conn, "lessons") and "hidden_at" not in _columns(conn, "lessons"):
+        conn.execute("ALTER TABLE lessons ADD COLUMN hidden_at TEXT")
+        done.append("lessons: added hidden_at")
+
     # The single current talk becomes a working_on row (owner assigned when the first user is created).
     row = conn.execute("SELECT value FROM settings WHERE key='current_talk_id'").fetchone()
     if row:
