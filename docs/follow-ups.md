@@ -22,12 +22,11 @@ Production and the LAN server were restarted with it.
 
 ## As of 2026-09-21 (night)
 
-**Git:** `main` at e5f6a4a, in sync with github.com/urielc/talkPrepper. All commits authored as
+**Git:** `main` at 4fd2efb (plus docs), in sync with github.com/urielc/talkPrepper. All commits authored as
 `uri@uacconsulting.com`.
 
-**LAN server** (this machine, 0.0.0.0:8765, log `data/server.log`) was started 2026-09-21 12:53 and has
-**not** been restarted since. It serves the current `web/dist`, but its Python is the code as of then — it
-lacks the citation checks, the Sonnet default and the editable match terms. Restart it to pick those up
+**LAN server** (this machine, 0.0.0.0:8765, log `data/server.log`) was restarted 2026-09-21 night on
+4fd2efb, so it runs all current code. Restart it after backend changes
 (`python3 -m server.cli serve --host 0.0.0.0 --port 8765`, nohup). It does not survive a reboot. Read the
 LAN address with `ip -4 addr show wlo1`; it changes.
 
