@@ -2,17 +2,35 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
+## Next (Uri, 2026-09-21 night): accordion for related talks
+
+Too much scrolling in the Related talks list. Apply the front page's accordion idea to it: each hit
+collapses to **title, speaker and conference**; the reader expands whichever ones they want to see the
+snippets (and the "N shared scriptures" aside). This supersedes item 1 of "Still open" below, which
+wanted the extras gone entirely — now they are kept, one click away.
+
+Where it lives: `web/src/components/RelatedSection.vue` renders each hit through
+`web/src/components/TalkListItem.vue` (props `snippets?`, `aside?`; also used by `ResearchColumn.vue`
+search results, `ScripturePanel.vue` and `ScripturesSection.vue`, so make the collapse opt-in rather than
+changing its default). The landing page accordion (`web/src/views/LandingView.vue`: one `openKey`,
+`.section-head` classes from `base.css`, gold left bar on the open item) is the pattern to borrow.
+
+Not yet decided — ask before building:
+- **One open at a time** (like the landing page) **or any number**? "Expand what they wish" reads like
+  any number, but the landing page is single-open.
+- **Remembered or not?** The landing page keeps its open panel in `localStorage` (`lp.landing.open`).
+  Related-talk hits change per talk and per search, so per-session state is probably enough.
+
 ## As of 2026-09-21 (night)
 
-**Digest feature:** committed 2026-09-15 (87db893) after a real end-to-end run with Sonnet 5 on 2026-09-11 (31 tests green). Working tree clean as of 2026-09-20.
+**Git:** `main` at e5f6a4a, in sync with github.com/urielc/talkPrepper. All commits authored as
+`uri@uacconsulting.com`.
 
-**Commit authorship:** all three commits were rewritten on 2026-09-15 to the global `uri@uacconsulting.com`
-(new SHAs 5f153a0, 6469c9c, 862e4e6); the mistaken repo-local ArbiterSports identity is gone.
-
-**Server:** restarted 2026-09-21 (midday) on the hardened code (commit 2106939), bound to 0.0.0.0:8765, log in `data/server.log`; the machine's LAN address changes (192.168.1.24 on 2026-09-07, 192.168.1.52 on 2026-09-19) — read it with `ip -4 addr show wlo1` rather than quoting an old one. Started by hand with `python3 -m server.cli serve --host 0.0.0.0 --port 8765` (nohup). It does
-not survive a reboot; a systemd user unit was offered but not built.
-
-**No git remote** is configured; nothing has ever been pushed.
+**LAN server** (this machine, 0.0.0.0:8765, log `data/server.log`) was started 2026-09-21 12:53 and has
+**not** been restarted since. It serves the current `web/dist`, but its Python is the code as of then — it
+lacks the citation checks, the Sonnet default and the editable match terms. Restart it to pick those up
+(`python3 -m server.cli serve --host 0.0.0.0 --port 8765`, nohup). It does not survive a reboot. Read the
+LAN address with `ip -4 addr show wlo1`; it changes.
 
 ## Endnotes scraped separately (done)
 
@@ -99,10 +117,12 @@ RAM) alongside other sites. Access details live in Uri's private notes, not in t
   venv, CPU torch), data in `/var/lib/lessonprep` (copy of the LAN `data/` taken 2026-09-21, same Fernet
   `secret.key`, bge-small model pre-seeded in `hf-cache/`), unit `lessonprep.service`, vhost per
   `deploy/nginx.conf`, certificate via `certbot certonly --nginx`.
-- Production runs commit 37a1821 (deployed by hand 2026-09-21 night). Verified over HTTPS: redirect, HSTS,
-  CSP, traversal blocked, per-account 429 then nginx 503 on `/api/auth/`, SSE proxying unbuffered.
+- Production runs e5f6a4a, deployed by hand 2026-09-21 ~24:00 and restarted after the backend changes;
+  `/api/health` green. Earlier checks (2026-09-21 evening, on 37a1821): redirect, HSTS, CSP, traversal
+  blocked, per-account 429 then nginx 503 on `/api/auth/`, SSE proxying unbuffered.
 - **CD not yet active:** `.github/workflows/deploy.yml` has its secrets/variables set, the test job passes,
-  but the deploy job fails at SSH because the CI public key is not authorised on the server. Uri has a
+  but the deploy job fails at SSH because the CI public key is not authorised on the server — still true
+  on the 2026-09-21 23:58 UTC run (35669964530: `lessonprep@…: Permission denied (publickey)`). Uri has a
   script for that one-time step (login shell for `lessonprep`, `authorized_keys`, sudoers for
   `systemctl restart lessonprep`). Until then deploy by hand as root: pull as `lessonprep`, rsync
   `web/dist/`, `systemctl restart lessonprep`.
@@ -111,18 +131,14 @@ RAM) alongside other sites. Access details live in Uri's private notes, not in t
 - Open from the security review: rotate the Anthropic key exposed before the traversal fix, quotas (F-07),
   SSRF allowlist (F-13), recipient policy for emailed notes, memory footprint once the embedding model loads
   on the droplet (unmeasured).
-- The LAN instance on this machine keeps running separately (started 2026-09-21 midday on commit 2106939);
-  the two databases diverge from 2026-09-21.
+- The LAN instance on this machine runs separately (see the status block above); the two databases
+  diverge from 2026-09-21. The droplet has no `sqlite3` binary — query its DB with `python3 -c`.
 
 ## Still open: related-talks list, tabbed reading
 
 Asked by Uri on 2026-09-20:
 
-1. **Related talks collapsible and compact** — show only title, speaker and month/year (no snippets, no
-   "shared scriptures" aside). Today `ResearchColumn.vue` wraps `RelatedSection.vue` in `CollapsibleSection`
-   (the whole section already collapses); the compaction is inside `RelatedSection.vue`, which passes
-   `snippets` and `aside` to `TalkListItem.vue` (props `snippets?`, `aside?`). Conference label already
-   carries "April 2026"-style month/year (`talk.conference`).
+1. ~~**Related talks collapsible and compact**~~ — superseded 2026-09-21 by the accordion in "Next" above.
 2. **Open related talks as tabs in the centre top pane** instead of the slide-over drawer. Today
    `TalkListItem` calls `ui.openTalk(id)` (`web/src/stores/ui.ts`, `drawerTalkId`) and `TalkDrawer.vue`
    renders it. Plan: a tab strip above `.reader-pane` in `WorkspaceView.vue` (lesson talk pinned as first
