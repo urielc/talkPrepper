@@ -2,20 +2,16 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## Josephus and the Apocrypha (added 2026-10-07, open: production)
+## Josephus and the Apocrypha (done 2026-10-07, b00853b, deployed)
 
-Built and running on the LAN server; not yet committed or in production. Sources, numbering and the
-assistant's tools are described in the README Notes. Locally indexed: 2,304 Josephus sections (3,728
-embedded chunks) and 5,720 Apocrypha verses; one talk (2007-04, "The Tongue of Angels") cites
+In production since 2026-10-07: code via CD, then `data/josephus/`, `data/apocrypha.json` and the Josephus
+embeddings copied to the data dir and re-indexed there (2,304 sections, 3,728 chunks, 0 embedded on the
+box, 5,720 Apocrypha verses). Pre-update backup in `/var/backups/lessonprep-20261007` on the droplet.
+Sources and numbering are in the README Notes. One talk (2007-04, "The Tongue of Angels") cites
 Ecclesiasticus 28:17 and now links to it.
 
-**To ship:** push (CD deploys the code and installs `defusedxml`), then copy `data/josephus/`,
-`data/apocrypha.json` and `data/embeddings/josephus.npy` + `josephus_hashes.json` into the production
-data dir and re-run `server.cli index` there with the service stopped, as for a new conference. Copying
-the embeddings means the box embeds nothing; without them it would embed 3,728 chunks on a 2 GB droplet.
-
-Not done (possible next steps): pinning Josephus passages to a lesson, Josephus in the landing page
-search, Apocrypha/Josephus for Ollama models without tool support.
+Deliberately skipped (Uri, 2026-10-07): pinning Josephus passages, and Josephus/Apocrypha for Ollama
+models without tool support.
 
 ## October 2026 conference (added 2026-10-06, open: endnotes)
 
