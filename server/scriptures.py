@@ -1,7 +1,8 @@
 """Standard works: book table, reference normalisation, DB loading and lookup.
 
 The verse data comes from the public-domain beandog/lds-scriptures JSON export
-(one flat record per verse). Book titles in that dataset are the canonical
+(one flat record per verse). The Apocrypha (``apocrypha.py``) is loaded into the
+same table under its own volume. Book titles in that dataset are the canonical
 names used throughout this app (``talks`` cite them in many spellings; see
 ``BOOK_ALIASES``).
 """
@@ -16,7 +17,8 @@ from typing import Iterable
 
 import httpx
 
-from .config import SCRIPTURES_JSON, SCRIPTURES_URL
+from .apocrypha import BOOKS as APOCRYPHA_BOOKS, VOLUME as APOCRYPHA, download_apocrypha
+from .config import APOCRYPHA_JSON, SCRIPTURES_JSON, SCRIPTURES_URL
 
 # (canonical title, dataset short title, volume, extra aliases used in talks)
 BOOKS: list[tuple[str, str, str, tuple[str, ...]]] = [
@@ -114,6 +116,8 @@ BOOKS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("Joseph Smith--History", "JS-H", "Pearl of Great Price",
      ("Joseph Smith—History", "Joseph Smith–History", "Joseph Smith-History", "JS—H", "JS–H")),
     ("Articles of Faith", "A of F", "Pearl of Great Price", ()),
+    # Apocrypha (not part of the standard works; see D&C 91)
+    *[(title, short, APOCRYPHA, extra) for _code, title, short, extra in APOCRYPHA_BOOKS],
 ]
 
 # Display names: the dataset uses '--' where the Church uses an em dash.
@@ -197,13 +201,18 @@ def iter_verses(path: Path = SCRIPTURES_JSON) -> Iterable[dict]:
             yield rec
 
 
-def load_scriptures_into_db(conn: sqlite3.Connection, path: Path = SCRIPTURES_JSON) -> int:
-    """(Re)populate the scriptures table and its FTS index. Returns verse count."""
+def load_scriptures_into_db(conn: sqlite3.Connection, path: Path = SCRIPTURES_JSON,
+                            apocrypha: Path | None = APOCRYPHA_JSON) -> int:
+    """(Re)populate the scriptures table (standard works, then the Apocrypha when
+    ``apocrypha`` is given, downloading it if missing) and its FTS index. Returns verse count."""
     conn.execute("DELETE FROM scriptures")
+    paths = [path]
+    if apocrypha is not None:
+        paths.append(download_apocrypha(apocrypha))
     rows = [
         (rec["volume_title"], rec["book_title"], rec["book_short_title"],
          int(rec["chapter_number"]), int(rec["verse_number"]), rec["scripture_text"])
-        for rec in iter_verses(path)
+        for p in paths for rec in iter_verses(p)
     ]
     conn.executemany(
         "INSERT INTO scriptures(volume, book, book_short, chapter, verse, text) VALUES(?,?,?,?,?,?)",
@@ -251,15 +260,17 @@ def chapter_count(conn: sqlite3.Connection, book: str) -> int:
     return int(row[0] or 0)
 
 
-def search_verses(conn: sqlite3.Connection, query: str, limit: int = 20) -> list[dict]:
-    """Full-text search over verse text. Returns dicts with highlighted snippets."""
+def search_verses(conn: sqlite3.Connection, query: str, limit: int = 20,
+                  apocrypha: bool = False) -> list[dict]:
+    """Full-text search over verse text. Returns dicts with highlighted snippets.
+    Searches the standard works, or only the Apocrypha when ``apocrypha``."""
     rows = conn.execute(
         "SELECT s.book, s.chapter, s.verse, s.text, "
         "snippet(scriptures_fts, 0, '<mark>', '</mark>', '…', 24) AS snippet, "
         "bm25(scriptures_fts) AS score "
         "FROM scriptures_fts JOIN scriptures s ON s.id = scriptures_fts.rowid "
-        "WHERE scriptures_fts MATCH ? ORDER BY score LIMIT ?",
-        (query, limit),
+        "WHERE scriptures_fts MATCH ? AND (s.volume = ?) = ? ORDER BY score LIMIT ?",
+        (query, APOCRYPHA, int(apocrypha), limit),
     ).fetchall()
     return [
         {

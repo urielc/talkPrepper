@@ -9,10 +9,14 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("LP_DATA_DIR") or ROOT / "data")
 TALKS_JSON = DATA_DIR / "general_conference_talks.json"
 SCRIPTURES_JSON = DATA_DIR / "scriptures.json"
+APOCRYPHA_JSON = DATA_DIR / "apocrypha.json"
 DB_PATH = DATA_DIR / "app.db"
 EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 CHUNKS_NPY = EMBEDDINGS_DIR / "chunks.npy"
 CHUNK_HASHES = EMBEDDINGS_DIR / "chunk_hashes.json"
+JOSEPHUS_DIR = DATA_DIR / "josephus"
+JOSEPHUS_NPY = EMBEDDINGS_DIR / "josephus.npy"
+JOSEPHUS_HASHES = EMBEDDINGS_DIR / "josephus_hashes.json"
 WEB_DIST = ROOT / "web" / "dist"
 
 SCRIPTURES_URL = (

@@ -8,6 +8,7 @@ import { useAuthStore } from './stores/auth'
 import { talkRoute } from './router'
 import TalkDrawer from './components/TalkDrawer.vue'
 import ScripturePanel from './components/ScripturePanel.vue'
+import JosephusPanel from './components/JosephusPanel.vue'
 
 const ui = useUiStore()
 const lesson = useLessonStore()
@@ -95,6 +96,7 @@ function cycleTheme() {
     <template v-if="auth.user">
       <TalkDrawer />
       <ScripturePanel />
+      <JosephusPanel />
     </template>
 
     <div class="toasts" aria-live="polite">

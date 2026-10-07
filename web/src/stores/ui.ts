@@ -46,10 +46,21 @@ export const useUiStore = defineStore('ui', () => {
   // Scripture panel: the passage being viewed
   const scriptureRef = ref<string | null>(null)
   function openScripture(refText: string) {
+    josephusRef.value = null
     scriptureRef.value = refText
   }
   function closeScripture() {
     scriptureRef.value = null
+  }
+
+  // Josephus panel: shares the scripture panel's place, so one closes the other
+  const josephusRef = ref<string | null>(null)
+  function openJosephus(refText: string) {
+    scriptureRef.value = null
+    josephusRef.value = refText
+  }
+  function closeJosephus() {
+    josephusRef.value = null
   }
 
   // Ask AI sidebar
@@ -83,6 +94,9 @@ export const useUiStore = defineStore('ui', () => {
     scriptureRef,
     openScripture,
     closeScripture,
+    josephusRef,
+    openJosephus,
+    closeJosephus,
     aiOpen,
     openAi,
     closeAi,

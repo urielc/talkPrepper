@@ -110,6 +110,19 @@ export interface Lesson {
   pins: Pin[]
 }
 
+export interface JosephusPassage {
+  ref: string
+  niese: string
+  work: string
+  work_title: string
+  chapter_title: string
+  chapter_ref: string | null
+  sections: { ref: string; niese: string; section: number; text: string; notes: string[] }[]
+  prev: string | null
+  next: string | null
+  attribution: string
+}
+
 export interface ChatBlock {
   type: 'text' | 'tool' | 'error'
   text?: string
@@ -117,7 +130,7 @@ export interface ChatBlock {
   name?: string
   input?: Record<string, unknown>
   summary?: string
-  refs?: { type: 'talk' | 'scripture'; id?: string; ref?: string; title?: string; speaker?: string }[]
+  refs?: { type: 'talk' | 'scripture' | 'josephus'; id?: string; ref?: string; title?: string; speaker?: string }[]
   preview?: string
   /** Server's citation checks for this block's text, keyed "kind:value". */
   citations?: Record<string, { ok: boolean; label?: string | null }>
@@ -249,6 +262,7 @@ export const api = {
       `/scriptures/lookup/talks?ref=${encodeURIComponent(ref)}${exclude ? `&exclude=${encodeURIComponent(exclude)}` : ''}`,
     ),
   chapter: (book: string, chapter: number) => get<Lookup>(`/scriptures/${encodeURIComponent(book)}/${chapter}`),
+  josephus: (ref: string) => get<JosephusPassage>(`/josephus/lookup?ref=${encodeURIComponent(ref)}`),
 
   digest: (id: string) => get<Digest | null>(`/talks/${id}/digest`),
   generateDigest: (id: string) => post<Digest>(`/talks/${id}/digest`),

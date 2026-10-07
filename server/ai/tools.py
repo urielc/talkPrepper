@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import sqlite3
 
+import json
+
 from ..citations import parse_scripture_refs
+from .. import josephus as jos
 from ..routers.scriptures import parse_single_ref
 from ..routers.talks import fetch_talks, talks_citing
-from ..scriptures import get_verses, format_ref
+from ..scriptures import get_verses, format_ref, search_verses, BOOK_VOLUME, APOCRYPHA
+from ..search import fts_query
 from ..search import SearchEngine
 from .base import ToolSpec, ToolResult
 
@@ -51,12 +55,29 @@ TOOLS: list[ToolSpec] = [
     ToolSpec(
         "get_scripture",
         "Look up the text of a scripture passage from the standard works (KJV Bible, Book of Mormon, "
-        "Doctrine and Covenants, Pearl of Great Price). Accepts references like 'Alma 41:14', "
-        "'3 Nephi 11:8–17', 'D&C 76:75', 'Joseph Smith—History 1:17', or a whole chapter 'Isaiah 53'.",
+        "Doctrine and Covenants, Pearl of Great Price), or of the KJV Apocrypha. Accepts references like "
+        "'Alma 41:14', '3 Nephi 11:8–17', 'D&C 76:75', 'Joseph Smith—History 1:17', 'Tobit 4:15', "
+        "'Ecclesiasticus 44:1–15', or a whole chapter 'Isaiah 53'.",
         {
             "type": "object",
             "properties": {"ref": {"type": "string"}},
             "required": ["ref"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        "search_apocrypha",
+        "Keyword search of the King James Apocrypha: 1 and 2 Esdras, Tobit, Judith, Rest of Esther, Wisdom of "
+        "Solomon, Ecclesiasticus (Sirach), Baruch (chapter 6 is the Epistle of Jeremy), Song of the Three "
+        "Children, Susanna, Bel and the Dragon, Prayer of Manasses, 1 and 2 Maccabees. Returns matching verses. "
+        "Use KJV wording; put phrases in double quotes. Read surrounding verses with get_scripture.",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 30},
+            },
+            "required": ["query"],
             "additionalProperties": False,
         },
     ),
@@ -68,6 +89,45 @@ TOOLS: list[ToolSpec] = [
             "properties": {
                 "ref": {"type": "string", "description": "Scripture reference, e.g. 'Alma 41:14' or 'Alma 41'"},
                 "limit": {"type": "integer", "default": 12, "minimum": 1, "maximum": 40},
+            },
+            "required": ["ref"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        "search_josephus",
+        "Search the works of Flavius Josephus (first-century Jewish historian; William Whiston's translation): "
+        "Antiquities of the Jews, The Wars of the Jews, Against Apion, and his Life. Useful for historical "
+        "background on the Old and New Testaments: the Herods, Pilate, the high priests, Pharisees, Sadducees "
+        "and Essenes, the temple, John the Baptist, James, the fall of Jerusalem. Modes as in search_talks. "
+        "Returns Whiston references (e.g. Antiquities 18.5.2) with snippets.",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Topic, name, phrase or question"},
+                "mode": {"type": "string", "enum": ["hybrid", "keyword", "semantic"], "default": "hybrid"},
+                "work": {"type": "string", "enum": ["antiquities", "war", "apion", "life"],
+                         "description": "Optional: limit to one work"},
+                "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        "get_josephus",
+        "Read a passage of Josephus by reference. Whiston numbering: 'Antiquities 18.3.3', 'Wars 2.8.14', "
+        "'Antiquities 1 Preface 2', 'Against Apion 2.17', 'Life 2'; a whole chapter: 'Antiquities 18.5'. "
+        "Niese numbering (book.paragraph, used by scholarly editions) also works: 'Antiquities 18.116'. "
+        "Read a passage before quoting or describing it.",
+        {
+            "type": "object",
+            "properties": {
+                "ref": {"type": "string"},
+                "context": {"type": "integer", "default": 0, "minimum": 0, "maximum": 3,
+                            "description": "Sections to include before and after"},
+                "include_notes": {"type": "boolean", "default": False,
+                                  "description": "Add Whiston's own 18th-century footnotes"},
             },
             "required": ["ref"],
             "additionalProperties": False,
@@ -160,8 +220,19 @@ class ToolContext:
         label = format_ref(book, chapter, vs, ve)
         if not verses:
             return ToolResult(f"No verses found for {label}", summary=f"{label}: not found")
-        text = f"[[scripture:{label}]]\n" + "\n".join(f"{v.verse} {v.text}" for v in verses)
+        note = " (Apocrypha: not part of the standard works)" if BOOK_VOLUME.get(book) == APOCRYPHA else ""
+        text = f"[[scripture:{label}]]{note}\n" + "\n".join(f"{v.verse} {v.text}" for v in verses)
         return ToolResult(text, [{"type": "scripture", "ref": label}], summary=f"Looked up {label}")
+
+    def tool_search_apocrypha(self, query: str, limit: int = 12) -> ToolResult:
+        limit = max(1, min(int(limit or 12), 30))
+        match = fts_query(query)
+        rows = search_verses(self.conn, match, limit, apocrypha=True) if match else []
+        lines = [f"- [[scripture:{r['ref']}]] {r['text']}" for r in rows]
+        refs = [{"type": "scripture", "ref": r["ref"]} for r in rows]
+        text = (f"Apocrypha search “{query}”: {len(rows)} verses\n" + "\n".join(lines)) if rows else \
+            f"No Apocrypha verses matched “{query}”. Try fewer or different (KJV) words."
+        return ToolResult(text, refs, summary=f"Searched the Apocrypha for “{query}” ({len(rows)} results)")
 
     def tool_talks_citing_scripture(self, ref: str, limit: int = 12) -> ToolResult:
         book, chapter, vs, ve = parse_single_ref(ref)
@@ -174,6 +245,57 @@ class ToolContext:
                 + ":\n" + "\n".join(lines)) if lines else f"No talks cite {label}."
         refs = [{"type": "scripture", "ref": label}] + [_talk_ref(t) for t in res["talks"]]
         return ToolResult(text, refs, summary=f"Found {res['total']} talks citing {label}")
+
+    def tool_search_josephus(self, query: str, mode: str = "hybrid", work: str | None = None,
+                             limit: int = 8) -> ToolResult:
+        limit = max(1, min(int(limit or 8), 20))
+        hits = self.engine.josephus_search(query, mode, limit, work)
+        ids = [int(h.talk_id) for h in hits]
+        rows = {r["id"]: r for r in self.conn.execute(
+            f"SELECT * FROM josephus WHERE id IN ({','.join('?' * len(ids))})", ids)} if ids else {}
+        lines, refs = [], []
+        for h in hits:
+            r = rows.get(int(h.talk_id))
+            if r is None:
+                continue
+            lab = jos.row_label(r)
+            snip = " | ".join(x.replace("<mark>", "").replace("</mark>", "") for x in h.snippets[:2])
+            title = f" — {r['chapter_title']}" if r["chapter_title"] else ""
+            lines.append(f"- [[josephus:{lab}]] (Niese {jos.row_niese(r)}){title}\n  snippet: {snip}")
+            refs.append({"type": "josephus", "ref": lab})
+        text = (f"Josephus search “{query}” ({mode}): {len(lines)} passages\n" + "\n".join(lines)) if lines else \
+            f"No Josephus passages matched “{query}”. Try other words (Whiston's English is archaic) or mode='semantic'."
+        return ToolResult(text, refs, summary=f"Searched Josephus for “{query}” ({len(lines)} results)")
+
+    def tool_get_josephus(self, ref: str, context: int = 0, include_notes: bool = False) -> ToolResult:
+        rows = jos.lookup(self.conn, ref)
+        if not rows:
+            return ToolResult(f"No Josephus passage found for “{ref}”. Use Whiston form like 'Antiquities 18.3.3' "
+                              "or search_josephus.", summary=f"{ref}: not found")
+        context = max(0, min(int(context or 0), 3))
+        before, after = [], []
+        for _ in range(context):
+            r = jos.neighbor(self.conn, before[0] if before else rows[0], -1)
+            if r is not None:
+                before.insert(0, r)
+            r = jos.neighbor(self.conn, after[-1] if after else rows[-1], 1)
+            if r is not None:
+                after.append(r)
+        work = jos.WORKS_BY_KEY[rows[0]["work"]]
+        lab = jos.range_label(rows)
+        ids = {r["id"] for r in rows}
+        out = [f"[[josephus:{lab}]] {work.title}, Niese {jos.range_niese(rows)}"]
+        if rows[0]["chapter_title"]:
+            out.append(f"Chapter: {rows[0]['chapter_title']}")
+        out.append("")
+        for r in before + rows + after:
+            tag = "" if r["id"] in ids else " (context)"
+            out.append(f"[{jos.row_label(r)}]{tag} {r['text']}")
+            if include_notes:
+                for n in json.loads(r["notes"] or "[]"):
+                    out.append(f"  Whiston's note: {n}")
+            out.append("")
+        return ToolResult("\n".join(out).strip(), [{"type": "josephus", "ref": lab}], summary=f"Read Josephus, {lab}")
 
     def tool_talks_citing_talk(self, talk_id: str) -> ToolResult:
         t = fetch_talks(self.conn, [talk_id]).get(talk_id)

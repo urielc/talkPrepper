@@ -15,7 +15,7 @@ from .middleware import SecurityHeadersMiddleware
 from .search import SearchEngine
 from .migrate import apply_schema
 from .settings import migrate_plaintext_secrets
-from .routers import talks, search, scriptures, lessons, settings, chat, admin, digest, auth, users
+from .routers import talks, search, scriptures, josephus, lessons, settings, chat, admin, digest, auth, users
 
 
 @asynccontextmanager
@@ -44,7 +44,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # web/vite.config.ts), so the frontend never makes a cross-origin request; the
 # production build is served from this same origin. Nothing needs allow_origins.
 
-for r in (auth.router, users.router, digest.router, talks.router, search.router, scriptures.router,
+for r in (auth.router, users.router, digest.router, talks.router, search.router, scriptures.router, josephus.router,
           lessons.router, settings.router, chat.router, admin.router):
     app.include_router(r, prefix="/api")
 

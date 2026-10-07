@@ -7,7 +7,8 @@ mark what does not.
 
 A talk id must be a row in ``talks``. A scripture only has to resolve to real
 verses — the whole canon is on disk, so a passage the model recalled without
-calling a tool is still verifiable, and is allowed.
+calling a tool is still verifiable, and is allowed. Josephus is treated the same
+way: the reference must resolve to sections in the ``josephus`` table.
 """
 
 from __future__ import annotations
@@ -15,11 +16,12 @@ from __future__ import annotations
 import re
 import sqlite3
 
+from . import josephus as jos
 from .citations import parse_ref
 from .scriptures import format_ref, verses_exist
 
 # Same shape the client parses in web/src/utils/markdown.ts.
-CITE_RE = re.compile(r"\[\[(talk|scripture):([^\]]+)\]\]")
+CITE_RE = re.compile(r"\[\[(talk|scripture|josephus):([^\]]+)\]\]")
 
 # Longest citation worth holding a partial match open for.
 MAX_CITE = 200
@@ -55,6 +57,9 @@ class CitationChecker:
             if not verses_exist(self.conn, book, chapter, vs, ve):
                 return {"ok": False, "label": None}
             return {"ok": True, "label": format_ref(book, chapter, vs, ve)}
+        if kind == "josephus":
+            rows = jos.lookup(self.conn, value)
+            return {"ok": bool(rows), "label": jos.range_label(rows) if rows else None}
         return {"ok": False, "label": None}
 
 

@@ -2,8 +2,8 @@
 
 Two groups of tables live in one database file:
 
-* Index tables (conferences, talks, paragraphs, refs, chunks, scriptures and
-  their FTS mirrors) are rebuilt from scratch by the indexer.
+* Index tables (conferences, talks, paragraphs, refs, chunks, scriptures,
+  Josephus and their FTS mirrors) are rebuilt from scratch by the indexer.
 * User tables (users, sessions, invites, working_on, settings, lessons, pins,
   digests, chat_*) are created once and never dropped by the indexer.
 """
@@ -111,6 +111,34 @@ CREATE VIRTUAL TABLE IF NOT EXISTS scriptures_fts USING fts5(
     tokenize='porter unicode61'
 );
 
+-- The works of Josephus (Whiston's translation), one row per Whiston section.
+CREATE TABLE IF NOT EXISTS josephus (
+    id            INTEGER PRIMARY KEY,
+    work          TEXT NOT NULL,       -- 'antiquities' | 'war' | 'apion' | 'life'
+    book          INTEGER NOT NULL,    -- 0 for Life
+    chapter       INTEGER NOT NULL,    -- Whiston chapter; 0 = preface or none (Apion, Life)
+    section       INTEGER NOT NULL,    -- Whiston section
+    niese_start   INTEGER NOT NULL,    -- Niese section range covered
+    niese_end     INTEGER NOT NULL,
+    chapter_title TEXT NOT NULL DEFAULT '',
+    ord           INTEGER NOT NULL,    -- document order across all works
+    text          TEXT NOT NULL,       -- paragraphs separated by blank lines
+    notes         TEXT NOT NULL DEFAULT '[]'   -- JSON list of Whiston's footnotes
+);
+CREATE INDEX IF NOT EXISTS josephus_ref ON josephus(work, book, chapter, section);
+CREATE INDEX IF NOT EXISTS josephus_niese ON josephus(work, book, niese_start);
+CREATE VIRTUAL TABLE IF NOT EXISTS josephus_fts USING fts5(
+    text, content='josephus', content_rowid='id',
+    tokenize='porter unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS josephus_chunks (
+    id         INTEGER PRIMARY KEY,    -- row index into josephus.npy
+    section_id INTEGER NOT NULL REFERENCES josephus(id),
+    text       TEXT NOT NULL,
+    text_hash  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS index_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -118,7 +146,7 @@ CREATE TABLE IF NOT EXISTS index_meta (
 """
 
 INDEX_TABLES = [
-    "paragraphs_fts", "talks_fts", "scriptures_fts",
+    "paragraphs_fts", "talks_fts", "scriptures_fts", "josephus_fts", "josephus_chunks", "josephus",
     "scripture_refs", "talk_refs", "chunks", "paragraphs", "talks",
     "conferences", "scriptures", "index_meta",
 ]

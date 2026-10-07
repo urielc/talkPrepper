@@ -30,7 +30,7 @@ to copy a working `data/` directory over than to run the multi-hour scrape on a 
    The path-traversal fix (F-01) means the app can safely serve `web/dist` itself — you do not have to
    move static serving to nginx, though the `location /` block in `nginx.conf` works either way.
 
-3. **Copy your data** (talks JSON, scriptures JSON, `app.db`, `embeddings/`) from your working local
+3. **Copy your data** (talks JSON, scriptures and Apocrypha JSON, `josephus/`, `app.db`, `embeddings/`) from your working local
    `data/` directory into `/var/lib/lessonprep`, owned by `lessonprep:lessonprep`. Or build it fresh on the
    box with `python -m server.cli download-scriptures` and `python -m server.cli index` (slow: several
    hours for the scrape, minutes for indexing).

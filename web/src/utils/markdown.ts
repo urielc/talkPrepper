@@ -11,7 +11,7 @@ export interface CitationCheck {
 
 /**
  * Render Markdown to safe HTML. Citation tokens like [[talk:2024-10/15renlund]]
- * and [[scripture:Alma 41:14]] become <button data-cite=...> elements that the
+ * [[scripture:Alma 41:14]] and [[josephus:Antiquities 18.5.2]] become <button data-cite=...> elements that the
  * host component wires up with a click handler.
  *
  * `citations` is the server's verdict per token, keyed "kind:value". One marked
@@ -21,7 +21,7 @@ export interface CitationCheck {
  * check existed rely on.
  */
 export function renderMarkdown(src: string, citations?: Record<string, CitationCheck>): string {
-  const withCites = src.replace(/\[\[(talk|scripture):([^\]]+)\]\]/g, (_m, kind: string, value: string) => {
+  const withCites = src.replace(/\[\[(talk|scripture|josephus):([^\]]+)\]\]/g, (_m, kind: string, value: string) => {
     const v = value.trim()
     if (citations?.[`${kind}:${v}`]?.ok === false) {
       return `<span class="cite cite-bad" title="Not found in the library">${escapeHtml(v)}</span>`

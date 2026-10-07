@@ -74,6 +74,7 @@ function onCiteClick(e: MouseEvent) {
   const value = el.dataset.citeValue || ''
   if (kind === 'talk') ui.openTalk(value)
   else if (kind === 'scripture') ui.openScripture(value)
+  else if (kind === 'josephus') ui.openJosephus(value)
 }
 
 function toggleTool(id: string) {
@@ -84,7 +85,7 @@ function toggleTool(id: string) {
 
 function pinAnswer(b: ChatBlock) {
   if (!b.text) return
-  const plain = b.text.replace(/\[\[(talk|scripture):([^\]]+)\]\]/g, (_m, k, v) => (k === 'scripture' ? `(${v})` : ''))
+  const plain = b.text.replace(/\[\[(talk|scripture|josephus):([^\]]+)\]\]/g, (_m, k, v) => (k === 'talk' ? '' : `(${v})`))
   lesson.addPin({ kind: 'note', text: plain.trim(), note: 'From AI assistant' })
 }
 
@@ -99,6 +100,9 @@ function describeCall(b: ChatBlock): string {
     get_scripture: 'Looking up',
     talks_citing_scripture: 'Finding talks citing',
     talks_citing_talk: 'Finding citations of',
+    search_josephus: 'Searching Josephus for',
+    search_apocrypha: 'Searching the Apocrypha for',
+    get_josephus: 'Reading Josephus,',
   }
   return `${verb[b.name || ''] || b.name} ${q ? `“${q}”` : ''}…`
 }
@@ -129,7 +133,7 @@ function describeCall(b: ChatBlock): string {
 
     <div ref="list" class="messages" @click="onCiteClick">
       <div v-if="!chat.messages.length" class="starter">
-        <p class="muted">Ask about the assigned talk. The assistant can search all talks and the scriptures, and every reference it gives is clickable.</p>
+        <p class="muted">Ask about the assigned talk. The assistant can search all talks, the scriptures, the Apocrypha and the works of Josephus, and every reference it gives is clickable.</p>
         <ul>
           <li v-for="s in suggestions" :key="s"><button class="quiet" @click="send(s)">{{ s }}</button></li>
         </ul>
@@ -149,6 +153,7 @@ function describeCall(b: ChatBlock): string {
             <div v-if="openTools.has(b.id || String(j)) && b.refs?.length" class="toolrefs">
               <template v-for="(r, k) in b.refs" :key="k">
                 <button v-if="r.type === 'talk'" class="quiet small" @click="ui.openTalk(r.id!)">{{ r.title }}</button>
+                <button v-else-if="r.type === 'josephus'" class="ref" @click="ui.openJosephus(r.ref!)">{{ r.ref }}</button>
                 <button v-else class="ref" @click="ui.openScripture(r.ref!)">{{ r.ref }}</button>
               </template>
             </div>
@@ -249,6 +254,11 @@ function describeCall(b: ChatBlock): string {
 }
 .md :deep(button.cite-scripture) {
   border-bottom: 2px solid var(--gold);
+  color: var(--ink);
+  border-radius: 0;
+}
+.md :deep(button.cite-josephus) {
+  border-bottom: 2px dotted var(--gold);
   color: var(--ink);
   border-radius: 0;
 }

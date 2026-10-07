@@ -1,6 +1,8 @@
 """Command line entry points.
 
     python -m server.cli download-scriptures
+    python -m server.cli download-josephus [--force]
+    python -m server.cli download-apocrypha [--force]
     python -m server.cli index [--skip-embeddings] [--talks PATH]
     python -m server.cli migrate [--admin-email EMAIL [--password PW]]
     python -m server.cli serve [--host 127.0.0.1] [--port 8765] [--reload]
@@ -21,6 +23,18 @@ def cmd_download(args: argparse.Namespace) -> None:
     from .scriptures import download_scriptures
     p = download_scriptures(SCRIPTURES_JSON, force=args.force)
     print(f"scriptures: {p} ({p.stat().st_size/1e6:.1f} MB)")
+
+
+def cmd_download_josephus(args: argparse.Namespace) -> None:
+    from .josephus import download_josephus
+    for p in download_josephus(force=args.force):
+        print(f"josephus: {p} ({p.stat().st_size/1e6:.1f} MB)")
+
+
+def cmd_download_apocrypha(args: argparse.Namespace) -> None:
+    from .apocrypha import download_apocrypha
+    p = download_apocrypha(force=args.force)
+    print(f"apocrypha: {p} ({p.stat().st_size/1e6:.1f} MB)")
 
 
 def cmd_index(args: argparse.Namespace) -> None:
@@ -76,6 +90,14 @@ def main(argv: list[str] | None = None) -> None:
     d = sub.add_parser("download-scriptures", help="fetch the standard works JSON")
     d.add_argument("--force", action="store_true")
     d.set_defaults(fn=cmd_download)
+
+    dj = sub.add_parser("download-josephus", help="fetch the works of Josephus (Perseus TEI) into data/josephus/")
+    dj.add_argument("--force", action="store_true")
+    dj.set_defaults(fn=cmd_download_josephus)
+
+    da = sub.add_parser("download-apocrypha", help="fetch the KJV Apocrypha into data/apocrypha.json")
+    da.add_argument("--force", action="store_true")
+    da.set_defaults(fn=cmd_download_apocrypha)
 
     i = sub.add_parser("index", help="(re)build the search index")
     i.add_argument("--talks", help="path to talks JSON (default data/general_conference_talks.json)")

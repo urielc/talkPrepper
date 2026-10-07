@@ -1,4 +1,4 @@
-"""Keyword (FTS5), semantic (embeddings) and hybrid search over talks.
+"""Keyword (FTS5), semantic (embeddings) and hybrid search over talks and Josephus.
 
 One ``SearchEngine`` is created per process; it lazily loads the chunk matrix
 and the embedding model.
@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .config import CHUNKS_NPY, DEFAULT_EMBEDDING_MODEL
+from .config import CHUNKS_NPY, DEFAULT_EMBEDDING_MODEL, JOSEPHUS_NPY
 from . import db as dbm
 
 STOPWORDS = set("""
@@ -84,6 +84,9 @@ class SearchEngine:
         self._chunk_ids: list[int] = []
         self._model = None
         self._model_name = None
+        self._jmatrix: np.ndarray | None = None
+        self._jchunk_sections: list[int] = []
+        self._jchunk_ids: list[int] = []
 
     # ------------------------------------------------------------ loading
 
@@ -92,6 +95,9 @@ class SearchEngine:
             self._matrix = None
             self._chunk_talks = []
             self._chunk_ids = []
+            self._jmatrix = None
+            self._jchunk_sections = []
+            self._jchunk_ids = []
 
     def _ensure_matrix(self) -> bool:
         if self._matrix is not None:
@@ -314,6 +320,91 @@ class SearchEngine:
         if v is not None:
             sem = self.semantic_search_vec(v, limit * 2, None, exclude=talk_id)
         return rrf_fuse([kw, sem], limit), terms
+
+
+    # ------------------------------------------------------------ Josephus
+    #
+    # Hits reuse TalkHit with the josephus section id (as a string) in ``talk_id``,
+    # so rrf_fuse works unchanged.
+
+    def _ensure_jmatrix(self) -> bool:
+        if self._jmatrix is not None:
+            return True
+        with self._lock:
+            if self._jmatrix is not None:
+                return True
+            if not JOSEPHUS_NPY.exists():
+                return False
+            rows = self.conn.execute("SELECT id, section_id FROM josephus_chunks ORDER BY id").fetchall()
+            m = np.load(JOSEPHUS_NPY)
+            if m.shape[0] != len(rows) or not rows:
+                return False
+            self._jchunk_ids = [r["id"] for r in rows]
+            self._jchunk_sections = [r["section_id"] for r in rows]
+            self._jmatrix = m
+            return True
+
+    def _allowed_sections(self, work: str | None) -> set[str] | None:
+        if not work:
+            return None
+        return {str(r[0]) for r in self.conn.execute("SELECT id FROM josephus WHERE work=?", (work,))}
+
+    def _josephus_fts(self, match: str, limit: int, allowed: set[str] | None) -> list[TalkHit]:
+        rows = self.conn.execute(
+            "SELECT rowid AS id, bm25(josephus_fts) AS score, "
+            "snippet(josephus_fts, 0, '<mark>', '</mark>', '…', 40) AS snip "
+            "FROM josephus_fts WHERE josephus_fts MATCH ? ORDER BY score LIMIT ?",
+            (match, max(limit * 4, 100)),
+        ).fetchall()
+        out = [TalkHit(str(r["id"]), -float(r["score"]), [r["snip"]], {"keyword"}) for r in rows
+               if allowed is None or str(r["id"]) in allowed]
+        return out[:limit]
+
+    def josephus_keyword(self, q: str, limit: int = 10, allowed: set[str] | None = None) -> list[TalkHit]:
+        match = fts_query(q)
+        if not match:
+            return []
+        hits = self._josephus_fts(match, limit, allowed)
+        if not hits:
+            terms = [t for t in re.findall(r"[A-Za-z0-9]+", q) if t.lower() not in STOPWORDS]
+            if len(terms) > 1:
+                hits = self._josephus_fts(fts_or_query(terms), limit, allowed)
+        return hits
+
+    def josephus_semantic(self, q: str, limit: int = 10, allowed: set[str] | None = None) -> list[TalkHit]:
+        if not self._ensure_jmatrix():
+            return []
+        scores = self._jmatrix @ self.embed_query(q)
+        order = np.argsort(-scores)
+        hits: dict[str, TalkHit] = {}
+        best_chunk: dict[str, int] = {}
+        for i in order:
+            sid = str(self._jchunk_sections[i])
+            if allowed is not None and sid not in allowed:
+                continue
+            if sid not in hits:
+                hits[sid] = TalkHit(sid, float(scores[i]), [], {"semantic"})
+                best_chunk[sid] = self._jchunk_ids[i]
+                if len(hits) >= limit:
+                    break
+        if best_chunk:
+            ids = list(best_chunk.values())
+            texts = {r["id"]: r["text"] for r in self.conn.execute(
+                f"SELECT id, text FROM josephus_chunks WHERE id IN ({','.join('?' * len(ids))})", ids)}
+            for sid, cid in best_chunk.items():
+                t = texts.get(cid, "")
+                hits[sid].snippets.append(_trim(t.split("\n", 1)[1] if "\n" in t else t, 320))
+        return list(hits.values())
+
+    def josephus_search(self, q: str, mode: str = "hybrid", limit: int = 10,
+                        work: str | None = None) -> list[TalkHit]:
+        allowed = self._allowed_sections(work)
+        if mode == "keyword" or not self._ensure_jmatrix():
+            return self.josephus_keyword(q, limit, allowed)
+        if mode == "semantic":
+            return self.josephus_semantic(q, limit, allowed)
+        return rrf_fuse([self.josephus_keyword(q, limit * 2, allowed),
+                         self.josephus_semantic(q, limit * 2, allowed)], limit)
 
 
 def rrf_fuse(result_lists: list[list[TalkHit]], limit: int, k: int = 60) -> list[TalkHit]:

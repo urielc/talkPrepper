@@ -1,4 +1,4 @@
-"""Build the search index from the scraped talks JSON and the scripture JSON.
+"""Build the search index from the scraped talks JSON, the scripture JSON and Josephus.
 
 Rebuilds every index table from scratch; user tables are untouched. Chunk
 embeddings are reused for chunks whose text hash is unchanged so a re-index
@@ -24,8 +24,9 @@ from .citations import (
 )
 from .config import (
     TALKS_JSON, SCRIPTURES_JSON, CHUNKS_NPY, CHUNK_HASHES, EMBEDDINGS_DIR,
-    CHUNK_TARGET_WORDS, CHUNK_MAX_WORDS, DEFAULT_EMBEDDING_MODEL,
+    CHUNK_TARGET_WORDS, CHUNK_MAX_WORDS, DEFAULT_EMBEDDING_MODEL, JOSEPHUS_NPY, JOSEPHUS_HASHES,
 )
+from .josephus import download_josephus, have_josephus, load_josephus_into_db, row_label, WORKS_BY_KEY
 from .scriptures import load_scriptures_into_db, download_scriptures
 
 MONTH_NAMES = {4: "April", 10: "October"}
@@ -43,6 +44,9 @@ class IndexStats:
     verses: int = 0
     chunks: int = 0
     chunks_embedded: int = 0
+    josephus_sections: int = 0
+    josephus_chunks: int = 0
+    josephus_embedded: int = 0
     seconds: float = 0.0
     extra: dict = field(default_factory=dict)
 
@@ -174,6 +178,69 @@ def chunk_paragraphs(paragraphs: list[tuple[int, str]]) -> list[tuple[int, int, 
     return chunks
 
 
+def split_words(text: str, max_words: int = CHUNK_MAX_WORDS,
+                target: int = CHUNK_TARGET_WORDS) -> list[str]:
+    """Cut one long passage at sentence ends into pieces of about ``target`` words.
+    Josephus sections are often a single paragraph of 1,000+ words, past what the
+    embedding model reads."""
+    if len(text.split()) <= max_words:
+        return [text]
+    out, buf, n = [], [], 0
+    for sent in re.split(r"(?<=[.;:?!])\s+", text):
+        k = len(sent.split())
+        if buf and n + k > max_words:
+            out.append(" ".join(buf))
+            buf, n = [], 0
+        buf.append(sent)
+        n += k
+        if n >= target:
+            out.append(" ".join(buf))
+            buf, n = [], 0
+    if buf:
+        if out and n < target // 3:
+            out[-1] += " " + " ".join(buf)
+        else:
+            out.append(" ".join(buf))
+    return out
+
+
+def load_old_vectors(npy: Path, hashes_path: Path) -> dict[str, np.ndarray]:
+    """Vectors from a previous build keyed by text hash, or {} if unusable."""
+    try:
+        if not npy.exists() or not hashes_path.exists():
+            return {}
+        matrix = np.load(npy)
+        hashes = json.loads(hashes_path.read_text())
+        if len(hashes) != matrix.shape[0]:
+            return {}
+        return {h: matrix[i] for i, h in enumerate(hashes)}
+    except Exception:
+        return {}
+
+
+def embed_with_reuse(texts: list[str], hashes: list[str], old_vecs: dict[str, np.ndarray],
+                     model_name: str, npy: Path, hashes_path: Path,
+                     progress: ProgressCb | None = None) -> int:
+    """Embed only texts whose hash is not in ``old_vecs``, save the full matrix and
+    its hash sidecar. Returns how many were embedded."""
+    todo = [i for i, h in enumerate(hashes) if h not in old_vecs]
+    if progress:
+        progress("embedding", 0, len(todo))
+    new_vecs = embed_texts([texts[i] for i in todo], model_name, progress=progress) if todo else None
+    dim = (new_vecs.shape[1] if new_vecs is not None and new_vecs.size
+           else next(iter(old_vecs.values())).shape[0] if old_vecs else 384)
+    matrix = np.zeros((len(texts), dim), dtype=np.float32)
+    for i, h in enumerate(hashes):
+        if h in old_vecs:
+            matrix[i] = old_vecs[h]
+    for j, i in enumerate(todo):
+        matrix[i] = new_vecs[j]
+    EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(npy, matrix)
+    hashes_path.write_text(json.dumps(hashes))
+    return len(todo)
+
+
 def text_hash(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
@@ -240,6 +307,7 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
                     old_vecs[h] = old_matrix[i]
         except Exception:
             old_vecs = {}
+    old_josephus = {} if skip_embeddings else load_old_vectors(JOSEPHUS_NPY, JOSEPHUS_HASHES)
 
     report("loading talks")
     with open(talks_json, encoding="utf-8") as f:
@@ -343,6 +411,21 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         download_scriptures(scriptures_json)
     stats.verses = load_scriptures_into_db(conn, scriptures_json)
 
+    # ---- Josephus (one row per Whiston section; long sections embed in pieces)
+    report("josephus")
+    if not have_josephus():
+        download_josephus()
+    stats.josephus_sections = load_josephus_into_db(conn)
+    jrows: list[tuple] = []   # (section_id, text, hash)
+    for r in conn.execute("SELECT id, work, book, chapter, section, chapter_title, text FROM josephus ORDER BY ord"):
+        prefix = f"{WORKS_BY_KEY[r['work']].title}, {row_label(r)}\n"
+        for piece in split_words(" ".join(r["text"].split())):
+            full = prefix + piece
+            jrows.append((r["id"], full, text_hash(full)))
+    with dbm.transaction(conn):
+        conn.executemany("INSERT INTO josephus_chunks(section_id, text, text_hash) VALUES(?,?,?)", jrows)
+    stats.josephus_chunks = len(jrows)
+
     # ---- chunks + embeddings
     report("chunking")
     chunk_rows: list[tuple] = []   # (talk_id, para_start, para_end, text, hash)
@@ -375,6 +458,9 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         np.save(CHUNKS_NPY, matrix)
         CHUNK_HASHES.write_text(json.dumps([r[4] for r in chunk_rows]))
         stats.chunks_embedded = len(todo_idx)
+        stats.josephus_embedded = embed_with_reuse(
+            [r[1] for r in jrows], [r[2] for r in jrows], old_josephus, embedding_model,
+            JOSEPHUS_NPY, JOSEPHUS_HASHES, progress)
         dbm.set_meta(conn, "embedding_model", embedding_model)
 
     dbm.set_meta(conn, "built_at", time.strftime("%Y-%m-%dT%H:%M:%S"))
