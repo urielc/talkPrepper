@@ -2,6 +2,19 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
+## October 2026 conference (added 2026-10-06, open: endnotes)
+
+`make update-talks` scraped 2026/10: 38 talks, all with full text (4,305 talks total). Indexed locally
+(210 chunks embedded) and in production, where the new JSON and `embeddings/` were copied into the data
+dir and `server.cli index` re-run (0 chunks embedded there, so the model never loads on the box). Do not
+copy the local `app.db` to production: it holds the index but also production's own users and notes.
+
+**Open:** five talks have no endnotes because the Church site had not posted them yet: `23chigbundu`,
+`44fantone`, `55lebethoa`, `53villanueva`, `15sikahema`. Once they appear, run
+`python3 scrape_conference_talks.py --refresh 2026/10`, `python3 -m server.cli index`, then repeat the
+production copy and re-index. A pre-update backup of production data is in
+`/var/backups/lessonprep-20261006` on the droplet; delete it once satisfied.
+
 ## Related-talks accordion (done 2026-09-21 night, bf6dcba, deployed)
 
 Each Related talks hit collapses to title, speaker and conference; a chevron left of the title shows the
