@@ -110,5 +110,5 @@ def test_anthropic_provider_requires_key():
     from server.ai.base import ProviderError
     with pytest.raises(ProviderError):
         get_provider({"ai_provider": "anthropic", "anthropic_api_key": ""})
-    p = get_provider({"ai_provider": "anthropic", "anthropic_api_key": "sk-test", "anthropic_model": "claude-opus-5"})
-    assert p.name == "anthropic" and p.model == "claude-opus-5"
+    p = get_provider({"ai_provider": "anthropic", "anthropic_api_key": "sk-test", "anthropic_model": "claude-opus-5-5"})
+    assert p.name == "anthropic" and p.model == "claude-opus-5-5"

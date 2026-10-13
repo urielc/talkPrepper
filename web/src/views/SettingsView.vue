@@ -16,7 +16,7 @@ const emailResult = ref<string | null>(null)
 const index = ref<IndexStatus | null>(null)
 let poll: ReturnType<typeof setInterval> | null = null
 
-const anthropicModels = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
+const anthropicModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5']
 
 onMounted(async () => {
   const data = await api.settings()
