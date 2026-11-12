@@ -2,7 +2,12 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
-## Topic search, class audience, Church manuals (branch feature/topic-search, 2026-11-12, not merged)
+## Topic search, class audience, Church manuals and songs (done 2026-11-12, 4616106, deployed)
+
+In production since 2026-11-12: code via CD (run 43188800632), then `manuals/manuals.json` and the manuals
+embeddings installed in the data dir and re-indexed there (1,443 pages, 3,861 chunks, 0 embedded on the box;
+1,108 talks with audience tags). Pre-update backup in `/var/backups/lessonprep-20261112` on the droplet.
+
 
 - Lessons page has "By topic": topic + Children/Teens/Adults + Any/Male/Female suggests talks (index, nudged by
   audience tags), with "Refine with AI" (top 30 to the model, up to 10 picks with reasons). Picking a talk adds it
@@ -15,9 +20,9 @@ Dated status that git does not already record. Update or delete lines as they re
   Children's Songbook (266; two duplicates dropped), as reference material, not a hymnal. Topic search lists songs
   separately from lessons. Come, Follow Me OT 2026 has its
   children's ideas as separate pages; youth Sunday lessons exist only from the September 2026 FTSoY issue on.
-- Deploying needs data, not just code: ship `data/manuals/manuals.json` plus `embeddings/manuals.npy` and
-  `manuals_hashes.json`, then re-index on the box (talk audience tags also need the re-index; until then they are
-  empty and the topic search works without the nudge).
+- Refreshing data later (youth lessons monthly, new hymn batches): `download-manuals --only …`, re-index locally,
+  then ship `data/manuals/manuals.json` plus `embeddings/manuals.npy` and `manuals_hashes.json` and re-index on
+  the box, as above.
 - Open: refresh youth lessons monthly (`download-manuals --only fsy-lessons`, re-index). Possible additions:
   General Handbook, Liahona, Friend, Preach My Gospel, Teaching in the Savior's Way. Terms of use allow personal,
   noncommercial use only; keep the app login-gated. Children's talk suggestions rarely surface Primary-tagged talks
