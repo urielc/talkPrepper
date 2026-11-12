@@ -222,7 +222,7 @@ onMounted(() => {
         <ul class="plain manuals">
           <li v-for="m in data.manuals" :key="m.uri">
             <button class="talk" @click="ui.openManual(m.uri)">
-              <span class="kind">{{ m.kind }}</span>
+              <span v-if="m.kind !== m.manual" class="kind">{{ m.kind }}</span>
               <span class="talk-title">{{ m.manual }}</span>
               <span class="page-title">{{ m.title }}</span>
             </button>
