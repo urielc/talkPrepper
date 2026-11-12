@@ -229,6 +229,16 @@ onMounted(() => {
           </li>
         </ul>
       </template>
+      <template v-if="data.songs?.length">
+        <h3>Hymns and songs</h3>
+        <ul class="plain manuals">
+          <li v-for="m in data.songs" :key="m.uri">
+            <button class="talk" @click="ui.openManual(m.uri)">
+              <span class="talk-title">{{ m.title }}</span>
+            </button>
+          </li>
+        </ul>
+      </template>
     </template>
     <p v-else-if="!loading" class="faint small hint">
       Enter a topic and choose who the lesson is for. Talks are ranked from the library; Refine with AI has the

@@ -112,6 +112,7 @@ export interface Suggestions {
   class: string
   talks: SuggestedTalk[]
   manuals: ManualPageSummary[]
+  songs: ManualPageSummary[]
   semantic_available: boolean
 }
 

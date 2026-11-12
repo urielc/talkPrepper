@@ -189,3 +189,38 @@ def test_non_content_pages():
     ms = [{"pages": [page]}, {"pages": [dict(page, id="b"), {"id": "c", "blocks": [{"text": "Other", "h": 0}]}]}]
     man.dedupe_pages(ms)
     assert [p["id"] for m in ms for p in m["pages"]] == ["a", "c"]
+
+
+SONG = """<header><p class="song-number">2</p><h1>The Spirit of God</h1></header>
+<div class="body-block"><figure class="music"><p class="label">Exultantly</p><div class="poetry">
+<div class="stanza"><p class="line"><span class="verse-number">1. </span>The Spirit of God like a fire is burning!</p>
+<p class="line">The latter-day glory begins to come forth;</p></div>
+<div class="chorus"><p class="label">[Chorus]</p><p class="line">We’ll sing and we’ll shout with the armies of heaven,</p></div>
+<div class="stanza"><p class="line"><span class="verse-number">2. </span>The Lord is extending the Saints’ understanding,</p></div>
+<div class="chorus"><p class="label">[Chorus]</p><p class="line">We’ll sing and we’ll shout with the armies of heaven,</p></div>
+</div><div class="citation-info"><p><em>Text:</em> William W. Phelps, 1792–1872.</p></div></figure>
+<p><a class="scripture-ref" href="/study/scriptures/dc-testament/dc/109">Doctrine and Covenants 109:79–80</a></p>
+<p><a class="scripture-ref" href="/study/scriptures/dc-testament/dc/110">Doctrine and Covenants 110</a></p></div>"""
+
+
+def test_song_page():
+    assert man.song_number(SONG) == "2"
+    assert [b["text"] for b in man.page_blocks(SONG)] == [
+        "The Spirit of God",
+        "1. The Spirit of God like a fire is burning! / The latter-day glory begins to come forth;",
+        "Chorus: We’ll sing and we’ll shout with the armies of heaven,",
+        "2. The Lord is extending the Saints’ understanding,",
+        "Text: William W. Phelps, 1792–1872.",
+        "Related scriptures: Doctrine and Covenants 109:79–80; Doctrine and Covenants 110",
+    ]
+
+
+def test_song_source_title(tmp_path, monkeypatch):
+    src = man.Source("hymns", "Hymns", "Hymns", ("/manual/hymns",), ("children", "youth", "adults"),
+                     number_label="Hymns, no. {n}")
+    monkeypatch.setattr(man, "SOURCES", [src])
+    toc = '<a href="/study/manual/hymns/the-spirit-of-god?lang=eng"><p class="title">The Spirit of God</p></a>'
+    data = man.download_manuals(tmp_path / "m.json", fetcher=FakeFetcher({"/manual/hymns": toc,
+                                                                         "/manual/hymns/the-spirit-of-god": SONG}))
+    page = data["manuals"][0]["pages"][0]
+    assert page["title"] == "the-spirit-of-god (Hymns, no. 2)"   # FakeFetcher's meta title is the slug

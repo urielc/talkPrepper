@@ -1,5 +1,5 @@
 """Church teaching material: lesson manuals, youth lessons, self-reliance, family history,
-Gospel Topics and Teachings of Presidents of the Church.
+Gospel Topics, Teachings of Presidents of the Church, and the hymns and Children's Songbook.
 
 Pages come from the Gospel Library content API (the JSON behind
 churchofjesuschrist.org/study), one request per second. Each manual's root URI
@@ -57,6 +57,7 @@ class Source:
     audience: tuple[str, ...]
     include: str = ""              # regex a page URI must match
     min_pages: int = 1             # sanity check for the download
+    number_label: str = ""         # songs: how a number is cited, e.g. "Hymns, no. {n}"
 
 
 def _ftsoy_roots(year: int = 2026) -> tuple[str, ...]:
@@ -91,6 +92,14 @@ SOURCES: list[Source] = [
            ("/manual/teachings-of-presidents-of-the-church-thomas-s-monson",), ("adults",), min_pages=20),
     Source("teachings-hinckley", "Teachings of Presidents of the Church: Gordon B. Hinckley", "Teachings",
            ("/manual/teachings-of-presidents-of-the-church-gordon-b-hinckley",), ("adults",), min_pages=20),
+    # Words, credits and related scriptures only: reference material for study, not a hymnal.
+    Source("hymns", "Hymns of The Church of Jesus Christ of Latter-day Saints", "Hymns",
+           ("/manual/hymns",), ("children", "youth", "adults"), min_pages=300, number_label="Hymns, no. {n}"),
+    Source("hymns-home-church", "Hymns—For Home and Church", "Hymns",
+           ("/music/hymns-for-home-and-church",), ("children", "youth", "adults"), min_pages=50,
+           number_label="Hymns—For Home and Church, no. {n}"),
+    Source("childrens-songbook", "Children's Songbook", "Children's Songbook",
+           ("/manual/childrens-songbook",), ("children",), min_pages=200, number_label="Children's Songbook, {n}"),
 ]
 SOURCES_BY_KEY = {s.key: s for s in SOURCES}
 
@@ -100,6 +109,7 @@ _SKIP_SLUG = re.compile(
     r"/(?:copyright[^/]*|title-page|contents|front-matter|notes|bibliography|(?:\d+-)?index|list-of-visuals|"
     r"publication-information|letter-of-completion|for-facilitators|evaluating-my-efforts)$")
 MIN_WORDS = 40
+MIN_SONG_WORDS = 8
 
 
 # ---------------------------------------------------------------- URIs
@@ -191,7 +201,7 @@ def toc_entries(body_html: str) -> list[tuple[str, str]]:
     return out
 
 
-_SKIP_CLASSES = {"reference", "short-reference", "title-number", "kicker-image"}
+_SKIP_CLASSES = {"reference", "short-reference", "title-number", "kicker-image", "song-number"}
 _BLOCKS = ("h1", "h2", "h3", "h4", "h5", "p", "li")
 
 
@@ -201,13 +211,51 @@ def _clean(s: str) -> str:
     return re.sub(r"([“‘(\[])\s+", r"\1", s)
 
 
+def _flatten_song(soup: BeautifulSoup) -> None:
+    """Replace a song's sheet-music figure with plain paragraphs: one per verse (lines
+    joined with " / "), the chorus once, then the text and music credits; and gather
+    the related-scripture links under the figure into one line."""
+    for fig in soup.select("figure.music"):
+        out: list[str] = []
+        seen: set[str] = set()
+        for part in fig.select("div.stanza, div.chorus"):
+            lines = [_clean(p.get_text(" ")) for p in part.select("p.line")]
+            text = " / ".join(x for x in lines if x)
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(("Chorus: " if "chorus" in (part.get("class") or []) else "") + text)
+        out += [_clean(p.get_text(" ")) for p in fig.select("div.citation-info p")]
+        for text in reversed([t for t in out if t]):
+            p = soup.new_tag("p")
+            p.string = text
+            fig.insert_after(p)
+        fig.decompose()
+    refs = [p for p in soup.find_all("p") if p.find("a", class_="scripture-ref")
+            and _clean(p.get_text(" ")) == _clean(" ".join(a.get_text(" ") for a in p.find_all("a")))]
+    if refs:
+        line = soup.new_tag("p")
+        line.string = "Related scriptures: " + "; ".join(_clean(p.get_text(" ")) for p in refs)
+        refs[0].insert_before(line)
+        for p in refs:
+            p.decompose()
+
+
+def song_number(body_html: str) -> str:
+    m = re.search(r'class="song-number"[^>]*>\s*([^<]+?)\s*<', body_html)
+    return m.group(1) if m else ""
+
+
 def page_blocks(body_html: str) -> list[dict]:
     """Headings and paragraphs of a page body in document order.
 
     Each block is {"text": str, "h": heading level or 0}. Figures, footnote markers
     and the citation lines at the top of every page are dropped; a list item that
-    wraps paragraphs yields the paragraphs, not a duplicate of their text."""
+    wraps paragraphs yields the paragraphs, not a duplicate of their text. A song's
+    words are kept (see ``_flatten_song``)."""
     soup = BeautifulSoup(body_html, "html.parser")
+    if soup.select_one("figure.music"):
+        _flatten_song(soup)
     for el in soup.select("figure, sup.marker, nav, script, style, img, video, audio"):
         el.decompose()
     out: list[dict] = []
@@ -335,10 +383,16 @@ def fetch_source(src: Source, fetcher: Fetcher, progress: ProgressCb | None = No
         if data is None:
             continue
         title = page_title(uri, _clean((data.get("meta") or {}).get("title") or toc_title), toc_titles)
-        blocks = page_blocks((data.get("content") or {}).get("body", ""))
+        body = (data.get("content") or {}).get("body", "")
+        blocks = page_blocks(body)
+        if src.number_label and (n := song_number(body)):
+            title = f"{title} ({src.number_label.format(n=n)})"
         main, children = split_children(blocks) if src.key == "cfm-ot-2026" else (blocks, [])
         for pid, ptitle, pblocks in ((uri, title, main), (uri + CHILDREN_SUFFIX, f"{title}: Ideas for Teaching Children", children)):
-            if word_count(pblocks) < MIN_WORDS or is_outline(pblocks):
+            if src.number_label:
+                if word_count(pblocks) < MIN_SONG_WORDS:
+                    continue
+            elif word_count(pblocks) < MIN_WORDS or is_outline(pblocks):
                 continue
             pages.append({"id": pid, "title": ptitle, "audience": audience_for(src, pid), "blocks": pblocks})
     if len({p["id"].split("#")[0] for p in pages}) < src.min_pages:

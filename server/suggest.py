@@ -12,6 +12,7 @@ import sqlite3
 from .ai.base import Provider, ProviderError
 from .audience import class_members, audience_key, parse_key
 from .routers.talks import fetch_talks
+from .manuals import SOURCES
 from .search import SearchEngine
 
 BOOST = 1.15        # per matching audience tag
@@ -55,7 +56,7 @@ def fetch_pages(conn: sqlite3.Connection, ids: list[int]) -> dict[int, dict]:
 
 
 def suggest(conn: sqlite3.Connection, engine: SearchEngine, topic: str, audience: str | None,
-            gender: str | None, limit: int = 20, manual_limit: int = 6) -> dict:
+            gender: str | None, limit: int = 20, manual_limit: int = 6, song_limit: int = 4) -> dict:
     key = audience_key(audience, gender)
     a, g = parse_key(key)
     hits = engine.search(topic, "hybrid", CANDIDATES)
@@ -75,15 +76,20 @@ def suggest(conn: sqlite3.Connection, engine: SearchEngine, topic: str, audience
         out.append({**t, "calling": m["calling"] if m else "", "audience_tags": (m["audience_tags"] if m else "").split(),
                     "score": round(h.score, 4), "snippet": h.snippets[0] if h.snippets else ""})
 
-    pages = []
-    mhits = engine.manual_search(topic, "hybrid", manual_limit, audience=a, gender=g)
-    found = fetch_pages(conn, [int(h.talk_id) for h in mhits])
-    for h in mhits:
-        p = found.get(int(h.talk_id))
-        if p:
-            pages.append({**p, "snippet": h.snippets[0] if h.snippets else ""})
+    # Lessons and manuals, and songs, searched separately so each list gets its own best matches.
+    song_keys = [s.key for s in SOURCES if s.number_label]
+    other_keys = [s.key for s in SOURCES if not s.number_label]
+
+    def pages_for(keys: list[str], n: int) -> list[dict]:
+        hits = engine.manual_search(topic, "hybrid", n, manual=keys, audience=a, gender=g)
+        found = fetch_pages(conn, [int(h.talk_id) for h in hits])
+        return [{**found[int(h.talk_id)], "snippet": h.snippets[0] if h.snippets else ""}
+                for h in hits if int(h.talk_id) in found]
+
+    pages = pages_for(other_keys, manual_limit)
+    songs = pages_for(song_keys, song_limit)
     return {"topic": topic, "audience": key, "class": class_members(key), "talks": out, "manuals": pages,
-            "semantic_available": engine.semantic_available}
+            "songs": songs, "semantic_available": engine.semantic_available}
 
 
 REFINE_SCHEMA = {

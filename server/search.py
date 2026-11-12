@@ -435,14 +435,15 @@ class SearchEngine:
             self._mmatrix = m
             return True
 
-    def _allowed_pages(self, manual: str | None, audience: str | None,
+    def _allowed_pages(self, manual: str | list[str] | None, audience: str | None,
                        gender: str | None) -> set[str] | None:
         if not manual and not audience and not gender:
             return None
         # Literal queries only: the filter is applied in Python.
+        keys = {manual} if isinstance(manual, str) else set(manual or [])
         rows = self.conn.execute("SELECT id, manual_key, audience FROM manual_pages").fetchall()
         return {str(r["id"]) for r in rows
-                if (not manual or r["manual_key"] == manual) and matches_audience(r["audience"], audience, gender)}
+                if (not keys or r["manual_key"] in keys) and matches_audience(r["audience"], audience, gender)}
 
     def _manual_fts(self, match: str, limit: int, allowed: set[str] | None) -> list[TalkHit]:
         rows = self.conn.execute(
@@ -500,7 +501,7 @@ class SearchEngine:
                 hits[pid].snippets.append(_trim(t.split("\n", 1)[1] if "\n" in t else t, 320))
         return list(hits.values())
 
-    def manual_search(self, q: str, mode: str = "hybrid", limit: int = 10, manual: str | None = None,
+    def manual_search(self, q: str, mode: str = "hybrid", limit: int = 10, manual: str | list[str] | None = None,
                       audience: str | None = None, gender: str | None = None) -> list[TalkHit]:
         allowed = self._allowed_pages(manual, audience, gender)
         if allowed is not None and not allowed:

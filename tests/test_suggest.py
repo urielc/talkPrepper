@@ -77,6 +77,7 @@ class FakeEngine:
 
     def manual_search(self, q, mode, limit, manual=None, audience=None, gender=None):
         self.manual_args = (audience, gender)
+        self.manual_keys = getattr(self, "manual_keys", []) + [manual]
         return []
 
 
@@ -88,6 +89,8 @@ def test_suggest_boosts_audience(conn):
     assert [t["id"] for t in women["talks"]][0] == "2026-10/b"       # youth + female boost
     assert women["talks"][-1]["id"] == "2026-10/c"                    # the priesthood talk drops
     assert women["audience"] == "youth-female" and eng.manual_args == ("youth", "female")
+    lessons, songs = eng.manual_keys[-2:]          # searched separately
+    assert "hymns" in songs and "childrens-songbook" in songs and "hymns" not in lessons and "cfm-ot-2026" in lessons
     t = women["talks"][0]
     assert t["title"] == "Forgiveness for Young Women" and t["conference"] == "October 2026"
     assert t["calling"] == "Young Women General President" and t["snippet"] == "b"

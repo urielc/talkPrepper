@@ -140,7 +140,9 @@ TOOLS: list[ToolSpec] = [
         "lessons, with separate 'Ideas for Teaching Children' pages), For the Strength of Youth Sunday lessons "
         "and guide, Teachings of Presidents of the Church (Russell M. Nelson, Thomas S. Monson, Gordon B. "
         "Hinckley), Gospel Topics, the self-reliance manuals (personal finances, finding a job, starting a "
-        "business, emotional resilience), and the Member's Guide to Temple and Family History Work. Returns "
+        "business, emotional resilience), the Member's Guide to Temple and Family History Work, and the words of "
+        "the hymns (1985 Hymns and Hymns—For Home and Church) and the Children's Songbook, with each song's "
+        "related scriptures. Returns "
         "page URIs, titles and snippets. Filter by audience to find material for children, youth or adults.",
         {
             "type": "object",
