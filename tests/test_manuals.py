@@ -224,3 +224,9 @@ def test_song_source_title(tmp_path, monkeypatch):
                                                                          "/manual/hymns/the-spirit-of-god": SONG}))
     page = data["manuals"][0]["pages"][0]
     assert page["title"] == "the-spirit-of-god (Hymns, no. 2)"   # FakeFetcher's meta title is the slug
+
+
+def test_best_title():
+    assert man.best_title("Chapter 9", "Chapter 9: The Power of Prayer") == "Chapter 9: The Power of Prayer"
+    assert man.best_title("Chapter 1: Heavenly Father’s Plan", "Heavenly Father’s Plan") == "Chapter 1: Heavenly Father’s Plan"
+    assert man.best_title("", "Conversion Is Our Goal") == "Conversion Is Our Goal"

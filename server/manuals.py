@@ -286,6 +286,16 @@ def split_children(blocks: list[dict]) -> tuple[list[dict], list[dict]]:
     return blocks, []
 
 
+def best_title(meta_title: str, toc_title: str) -> str:
+    """The page's own title, or the table of contents' when that says more: Monson's
+    chapters are titled just "Chapter 9" on the page but "Chapter 9: …" in the contents."""
+    if not meta_title:
+        return toc_title
+    if toc_title.startswith(meta_title) and len(toc_title) > len(meta_title):
+        return toc_title
+    return meta_title
+
+
 _TIME_NOTE = re.compile(r"\s*[—–-]\s*Maximum Time:.*$", re.IGNORECASE)
 
 
@@ -382,7 +392,7 @@ def fetch_source(src: Source, fetcher: Fetcher, progress: ProgressCb | None = No
         data = fetcher.get(uri)
         if data is None:
             continue
-        title = page_title(uri, _clean((data.get("meta") or {}).get("title") or toc_title), toc_titles)
+        title = page_title(uri, best_title(_clean((data.get("meta") or {}).get("title") or ""), toc_title), toc_titles)
         body = (data.get("content") or {}).get("body", "")
         blocks = page_blocks(body)
         if src.number_label and (n := song_number(body)):

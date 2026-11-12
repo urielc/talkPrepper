@@ -223,8 +223,8 @@ onMounted(() => {
           <li v-for="m in data.manuals" :key="m.uri">
             <button class="talk" @click="ui.openManual(m.uri)">
               <span class="kind">{{ m.kind }}</span>
-              <span class="talk-title">{{ m.title }}</span>
-              <span class="talk-meta">{{ m.manual }}</span>
+              <span class="talk-title">{{ m.manual }}</span>
+              <span class="page-title">{{ m.title }}</span>
             </button>
           </li>
         </ul>
@@ -316,6 +316,7 @@ onMounted(() => {
 }
 .talk-title,
 .talk-meta,
+.page-title,
 .calling,
 .reason,
 .snippet,
@@ -327,6 +328,11 @@ onMounted(() => {
 }
 .talk-meta {
   margin-top: 0.1rem;
+}
+.page-title {
+  margin-top: 0.1rem;
+  font-size: var(--fs-0);
+  color: var(--ink-2);
 }
 .calling {
   color: var(--ink-3);
