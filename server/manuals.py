@@ -94,8 +94,11 @@ SOURCES: list[Source] = [
 ]
 SOURCES_BY_KEY = {s.key: s for s in SOURCES}
 
-# Pages that are front matter, not teaching content.
-_SKIP_SLUG = re.compile(r"/(?:copyright[^/]*|title-page|contents|front-matter|notes|bibliography|index)$")
+# Front and back matter, not teaching content: title and publication pages, lists of
+# images, indexes, completion certificates and facilitator instructions.
+_SKIP_SLUG = re.compile(
+    r"/(?:copyright[^/]*|title-page|contents|front-matter|notes|bibliography|(?:\d+-)?index|list-of-visuals|"
+    r"publication-information|letter-of-completion|for-facilitators|evaluating-my-efforts)$")
 MIN_WORDS = 40
 
 
@@ -257,6 +260,17 @@ def word_count(blocks: list[dict]) -> int:
     return sum(len(b["text"].split()) for b in blocks if not b["h"])
 
 
+def is_outline(blocks: list[dict]) -> bool:
+    """A chapter landing page that only lists its sections ("My Foundation Principle",
+    "Business Principles, Skills, and Habits"): short, with no sentence of prose."""
+    paras = [b["text"] for b in blocks if not b["h"]]
+    return word_count(blocks) < 100 and all(len(p.split()) <= 12 for p in paras)
+
+
+def body_hash(blocks: list[dict]) -> str:
+    return hashlib.sha256("\n".join(b["text"] for b in blocks if not b["h"]).encode()).hexdigest()
+
+
 # ---------------------------------------------------------------- download
 
 ProgressCb = Callable[[str, int, int], None]
@@ -278,10 +292,25 @@ def download_manuals(dest: Path = MANUALS_JSON, only: list[str] | None = None, r
                 manuals.append(existing[src.key])
             continue
         manuals.append(fetch_source(src, fetcher, progress))
+    dedupe_pages(manuals)
     data = {"fetched_at": dt.datetime.now().isoformat(timespec="seconds"), "manuals": manuals}
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return data
+
+
+def dedupe_pages(manuals: list[dict]) -> None:
+    """Drop a page whose text already appeared earlier (the self-reliance workbooks
+    each reprint the same First Presidency message)."""
+    seen: set[str] = set()
+    for m in manuals:
+        kept = []
+        for p in m["pages"]:
+            h = body_hash(p["blocks"])
+            if h not in seen:
+                seen.add(h)
+                kept.append(p)
+        m["pages"] = kept
 
 
 def fetch_source(src: Source, fetcher: Fetcher, progress: ProgressCb | None = None) -> dict:
@@ -309,7 +338,7 @@ def fetch_source(src: Source, fetcher: Fetcher, progress: ProgressCb | None = No
         blocks = page_blocks((data.get("content") or {}).get("body", ""))
         main, children = split_children(blocks) if src.key == "cfm-ot-2026" else (blocks, [])
         for pid, ptitle, pblocks in ((uri, title, main), (uri + CHILDREN_SUFFIX, f"{title}: Ideas for Teaching Children", children)):
-            if word_count(pblocks) < MIN_WORDS:
+            if word_count(pblocks) < MIN_WORDS or is_outline(pblocks):
                 continue
             pages.append({"id": pid, "title": ptitle, "audience": audience_for(src, pid), "blocks": pblocks})
     if len({p["id"].split("#")[0] for p in pages}) < src.min_pages:

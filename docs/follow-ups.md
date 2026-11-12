@@ -9,7 +9,7 @@ Dated status that git does not already record. Update or delete lines as they re
   to my lessons with that class; the workspace has a Class selector. Digest and Ask AI name the class (elders
   quorum, Relief Society, Young Women, Aaronic Priesthood, Primary, Sunday School). Digests are cached per class;
   existing ones migrate as elders quorum.
-- Manuals: 773 pages from 12 sources (`server/manuals.py` SOURCES), 3,186 chunks. Come, Follow Me OT 2026 has its
+- Manuals: 746 pages from 12 sources (`server/manuals.py` SOURCES), 3,154 chunks, after dropping front/back matter, outline stubs and duplicate pages. Come, Follow Me OT 2026 has its
   children's ideas as separate pages; youth Sunday lessons exist only from the September 2026 FTSoY issue on.
 - Deploying needs data, not just code: ship `data/manuals/manuals.json` plus `embeddings/manuals.npy` and
   `manuals_hashes.json`, then re-index on the box (talk audience tags also need the re-index; until then they are

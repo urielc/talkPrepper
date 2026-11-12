@@ -80,7 +80,7 @@ def manuals_json(tmp_path, monkeypatch):
         CFM: TOC, f"{CFM}/001-conversion": INTRO, f"{CFM}/46": LESSON, f"{CFM}/copyright": INTRO,
         "/ftsoy/2026/11": ftoc,
         "/ftsoy/2026/11/fsy-lessons/04a-fourth-sunday": f"<h1>Daughters of God</h1><p>{WORDS}</p>",
-        "/ftsoy/2026/11/fsy-lessons/04b-fourth-sunday": f"<h1>Priesthood duty</h1><p>{WORDS}</p>",
+        "/ftsoy/2026/11/fsy-lessons/04b-fourth-sunday": f"<h1>Priesthood duty</h1><p>Duty. {WORDS}</p>",
     })
     dest = tmp_path / "manuals.json"
     man.download_manuals(dest, fetcher=fetcher)
@@ -172,3 +172,20 @@ def test_page_title_in_context():
     assert man.page_title("/manual/pf/8-debt/learn", "Learn—Maximum Time: 45 Minutes", toc) == "8: Getting out of Debt: Learn"
     assert man.page_title("/manual/gospel-topics/forgiveness-study-guide", "Forgiveness", {}) == "Forgiveness (study guide)"
     assert man.page_title("/manual/gospel-topics/forgiveness", "Forgiveness", {}) == "Forgiveness"
+
+
+def test_non_content_pages():
+    for slug in ("list-of-visuals", "publication-information", "letter-of-completion", "for-facilitators",
+                 "14-index", "index", "title-page", "copyright-information"):
+        assert man._SKIP_SLUG.search(f"/manual/x/{slug}"), slug
+    for slug in ("introduction", "historical-summary", "13-appendix", "indexing-records"):
+        assert not man._SKIP_SLUG.search(f"/manual/x/{slug}"), slug
+    outline = [{"text": "Our Bodies and Emotions", "h": 1}, {"text": "My Foundation Principle", "h": 0},
+               {"text": "Our Bodies Are a Gift from God", "h": 0}]
+    assert man.is_outline(outline)
+    assert not man.is_outline([{"text": "Gold plates were the ancient record from which the Book of Mormon "
+                                        "was translated by the gift and power of God.", "h": 0}])
+    page = {"id": "a", "blocks": [{"text": "Dear Brothers and Sisters", "h": 0}]}
+    ms = [{"pages": [page]}, {"pages": [dict(page, id="b"), {"id": "c", "blocks": [{"text": "Other", "h": 0}]}]}]
+    man.dedupe_pages(ms)
+    assert [p["id"] for m in ms for p in m["pages"]] == ["a", "c"]
