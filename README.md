@@ -1,11 +1,12 @@
 # Lesson Prep
 
-A local study and preparation tool for leading elders quorum discussions built on a General Conference talk. It indexes every conference talk since 1971 plus the standard works, the KJV Apocrypha and the works of Josephus, and gives you, for the assigned talk:
+A local study and preparation tool for leading a class discussion (elders quorum, Relief Society, youth or Primary) built on a General Conference talk. It indexes every conference talk since 1971 plus the standard works, Church manuals and lessons, the KJV Apocrypha and the works of Josephus. You can start from a talk you were assigned or from a topic (it suggests talks for the class you teach), and for the chosen talk it gives you:
 
 - the full text with every scripture reference clickable in place,
 - related talks (keyword + meaning-based search) and talks that cite the same passages,
 - free-text search across all talks and scriptures,
-- an AI assistant (Claude API or a local Ollama model) that searches the same index, including Josephus and the Apocrypha for historical background, and cites clickable references,
+- an AI assistant (Claude API or a local Ollama model) that searches the same index, including Church manuals for teaching ideas and Josephus and the Apocrypha for historical background, and cites clickable references,
+- a digest (essence, key quotes, discussion questions) written for the class you chose,
 - notes and pinned references per lesson, printable and emailable.
 
 Backend: Python / FastAPI / SQLite (FTS5) / sentence-transformers. Frontend: Vue 3 + Vite.
@@ -35,6 +36,11 @@ python3 scrape_conference_talks.py
 python -m server.cli download-scriptures
 python -m server.cli download-apocrypha
 python -m server.cli download-josephus
+
+# 4b. Optional: Church manuals and lessons (Come, Follow Me 2026, youth Sunday lessons, self-reliance,
+#     family history, Gospel Topics, Teachings of Presidents). About 950 pages at one request per second
+#     (about 20 minutes); the index skips them if this has not been run.
+python -m server.cli download-manuals
 
 # 5. Build the search index and embeddings (several minutes on CPU; downloads the bge-small model once)
 python -m server.cli index
@@ -100,7 +106,7 @@ The app uses port 8765 for the API because 8000 was taken on the development mac
 ```
 server/            FastAPI app, indexer, search, AI providers, routers
 web/               Vue 3 frontend
-data/              runtime data (talks JSON, scriptures and Apocrypha JSON, josephus/, app.db, embeddings), not committed
+data/              runtime data (talks JSON, scriptures and Apocrypha JSON, josephus/, manuals/, app.db, embeddings), not committed
 scrape_conference_talks.py
 tests/             pytest
 ```
@@ -118,5 +124,7 @@ python -m pytest -q
 - The Claude provider uses adaptive thinking, prompt caching of the talk text, streaming, and server-side refusal fallbacks. Ollama models without tool support get search results injected instead of calling tools.
 - **Apocrypha:** the KJV (1769 text) Apocrypha from eBible.org's public-domain "King James Version + Apocrypha" export, in the `scriptures` table under the volume "Apocrypha". Fourteen books; the Epistle of Jeremy is Baruch 6, as in the KJV, for fifteen by the usual count. Scripture lookups, the scripture panel and "talks citing" cover it; the landing page's verse search keeps to the standard works, and the assistant has its own `search_apocrypha` tool. The assistant is told to label it as Apocrypha and points to D&C 91.
 - **Josephus:** William Whiston's 1737 translation (public domain) as encoded by the Perseus Digital Library (TEI XML, CC BY-SA 4.0 for the encoding), downloaded at setup rather than redistributed. One row per Whiston section (`Antiquities 18.3.3`), with the Niese range (`18.63–64`) beside it; references in either system resolve. Sections are embedded for meaning search (`embeddings/josephus.npy`). The parser repairs two chapter numbers the source has out of sequence (Antiquities 5 and 13). The assistant searches and reads it with `search_josephus` and `get_josephus` and cites `[[josephus:…]]`, which opens a reader panel.
-- Ollama models without tool support get talk search results injected, but not Josephus or the Apocrypha.
+- **Church manuals:** fetched from the Gospel Library content API (`/study/api/v3/language-pages/type/content`), one request per second, with raw responses cached in `data/manuals/raw/`. Sources are listed in `server/manuals.py` (`SOURCES`); each page carries audience tags (children, youth, adults, and female or male for the Young Women and Aaronic Priesthood fourth-Sunday lessons). A Come, Follow Me lesson's "Ideas for Teaching Children" section is its own page (`…/46#children`). The Church's terms of use allow personal, noncommercial use, and every page sits behind the app's login. The assistant uses `search_manuals` and `get_manual_page` and cites `[[manual:…]]`, which opens a reader panel. Youth lessons appear monthly: re-run `download-manuals --only fsy-lessons` and re-index.
+- **Topic suggestions** (`server/suggest.py`): hybrid search ranks talks for the topic, then each talk's audience tags nudge the order. Tags come from the speaker's calling (the line under the byline) and from whom the talk addresses ("brethren", "sisters", "young women", "boys and girls"), since session names are not scraped. "Refine with AI" sends the top 30 to the configured model, which picks up to 10 and says why. Choosing a talk adds it to your lessons with that class, and the digest and the assistant's prompt name the class (elders quorum, Relief Society, Young Women, Aaronic Priesthood quorum, Primary, or a Sunday School class).
+- Ollama models without tool support get talk search results injected, but not Josephus, the Apocrypha or the manuals.
 - Design is inspired by the Church's website but uses its own mark; the Church logo and the Christus image are trademarks of Intellectual Reserve, Inc. and are intentionally not included.

@@ -2,6 +2,23 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
+## Topic search, class audience, Church manuals (branch feature/topic-search, 2026-11-12, not merged)
+
+- Lessons page has "By topic": topic + Children/Teens/Adults + Any/Male/Female suggests talks (index, nudged by
+  audience tags), with "Refine with AI" (top 30 to the model, up to 10 picks with reasons). Picking a talk adds it
+  to my lessons with that class; the workspace has a Class selector. Digest and Ask AI name the class (elders
+  quorum, Relief Society, Young Women, Aaronic Priesthood, Primary, Sunday School). Digests are cached per class;
+  existing ones migrate as elders quorum.
+- Manuals: 773 pages from 12 sources (`server/manuals.py` SOURCES), 3,186 chunks. Come, Follow Me OT 2026 has its
+  children's ideas as separate pages; youth Sunday lessons exist only from the September 2026 FTSoY issue on.
+- Deploying needs data, not just code: ship `data/manuals/manuals.json` plus `embeddings/manuals.npy` and
+  `manuals_hashes.json`, then re-index on the box (talk audience tags also need the re-index; until then they are
+  empty and the topic search works without the nudge).
+- Open: refresh youth lessons monthly (`download-manuals --only fsy-lessons`, re-index). Possible additions:
+  General Handbook, Liahona, Friend, Preach My Gospel, Teaching in the Savior's Way. Terms of use allow personal,
+  noncommercial use only; keep the app login-gated. Children's talk suggestions rarely surface Primary-tagged talks
+  (the tag is a small nudge); consider a stronger boost if Uri finds the children's list too adult.
+
 ## Josephus and the Apocrypha (done 2026-10-07, b00853b, deployed)
 
 In production since 2026-10-07: code via CD, then `data/josephus/`, `data/apocrypha.json` and the Josephus

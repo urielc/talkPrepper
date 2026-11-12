@@ -75,6 +75,7 @@ function onCiteClick(e: MouseEvent) {
   if (kind === 'talk') ui.openTalk(value)
   else if (kind === 'scripture') ui.openScripture(value)
   else if (kind === 'josephus') ui.openJosephus(value)
+  else if (kind === 'manual') ui.openManual(value)
 }
 
 function toggleTool(id: string) {
@@ -85,7 +86,7 @@ function toggleTool(id: string) {
 
 function pinAnswer(b: ChatBlock) {
   if (!b.text) return
-  const plain = b.text.replace(/\[\[(talk|scripture|josephus):([^\]]+)\]\]/g, (_m, k, v) => (k === 'talk' ? '' : `(${v})`))
+  const plain = b.text.replace(/\[\[(talk|scripture|josephus|manual):([^\]]+)\]\]/g, (_m, k, v) => (k === 'talk' || k === 'manual' ? '' : `(${v})`))
   lesson.addPin({ kind: 'note', text: plain.trim(), note: 'From AI assistant' })
 }
 
@@ -93,7 +94,7 @@ const sessionOptions = computed(() => chat.sessions)
 
 function describeCall(b: ChatBlock): string {
   const input = (b.input || {}) as Record<string, unknown>
-  const q = String(input.query || input.ref || input.talk_id || '')
+  const q = String(input.query || input.ref || input.talk_id || input.uri || '')
   const verb: Record<string, string> = {
     search_talks: 'Searching talks for',
     get_talk: 'Reading talk',
@@ -103,6 +104,8 @@ function describeCall(b: ChatBlock): string {
     search_josephus: 'Searching Josephus for',
     search_apocrypha: 'Searching the Apocrypha for',
     get_josephus: 'Reading Josephus,',
+    search_manuals: 'Searching Church manuals for',
+    get_manual_page: 'Reading manual page',
   }
   return `${verb[b.name || ''] || b.name} ${q ? `“${q}”` : ''}…`
 }
@@ -133,7 +136,7 @@ function describeCall(b: ChatBlock): string {
 
     <div ref="list" class="messages" @click="onCiteClick">
       <div v-if="!chat.messages.length" class="starter">
-        <p class="muted">Ask about the assigned talk. The assistant can search all talks, the scriptures, the Apocrypha and the works of Josephus, and every reference it gives is clickable.</p>
+        <p class="muted">Ask about the assigned talk. The assistant can search all talks, the scriptures, Church manuals and lessons, the Apocrypha and the works of Josephus, and every reference it gives is clickable.</p>
         <ul>
           <li v-for="s in suggestions" :key="s"><button class="quiet" @click="send(s)">{{ s }}</button></li>
         </ul>
@@ -154,6 +157,7 @@ function describeCall(b: ChatBlock): string {
               <template v-for="(r, k) in b.refs" :key="k">
                 <button v-if="r.type === 'talk'" class="quiet small" @click="ui.openTalk(r.id!)">{{ r.title }}</button>
                 <button v-else-if="r.type === 'josephus'" class="ref" @click="ui.openJosephus(r.ref!)">{{ r.ref }}</button>
+                <button v-else-if="r.type === 'manual'" class="quiet small" @click="ui.openManual(r.ref!)">{{ r.title }}</button>
                 <button v-else class="ref" @click="ui.openScripture(r.ref!)">{{ r.ref }}</button>
               </template>
             </div>
@@ -261,6 +265,12 @@ function describeCall(b: ChatBlock): string {
   border-bottom: 2px dotted var(--gold);
   color: var(--ink);
   border-radius: 0;
+}
+.md :deep(button.cite-manual) {
+  font-size: 0.85em;
+  color: var(--blue-2);
+  text-decoration: underline dotted;
+  font-style: italic;
 }
 .md :deep(button.cite:hover) {
   background: var(--gold-soft);

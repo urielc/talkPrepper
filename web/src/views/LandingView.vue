@@ -97,6 +97,10 @@ function posterFallback(e: Event) {
           Lesson prep
           <span class="menu-sub">{{ lesson.mine.length ? `${lesson.mine.length} in progress · pick or continue a talk` : 'pick a talk to begin' }}</span>
         </RouterLink>
+        <RouterLink :to="{ path: '/lessons', query: { find: 'topic' } }" class="menu-link">
+          Find talks by topic
+          <span class="menu-sub">for children, teens or adults</span>
+        </RouterLink>
       </div>
     </nav>
 
@@ -224,6 +228,8 @@ function posterFallback(e: Event) {
   margin: 0 auto;
   padding: 0 2rem;
   display: flex;
+  flex-wrap: wrap;
+  column-gap: 2.5rem;
 }
 .menu-link {
   display: flex;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, type TalkDetail } from '../api'
+import { api, AUDIENCE_LABELS, type AudienceKey, type TalkDetail } from '../api'
 import { talkRoute } from '../router'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
@@ -35,6 +35,20 @@ watch(
   },
   { immediate: true },
 )
+
+// Who the lesson is for: the digest's questions and Ask AI are written for this class.
+const audienceOptions = Object.entries(AUDIENCE_LABELS) as [AudienceKey, string][]
+async function setAudience(key: AudienceKey) {
+  if (!talk.value) return
+  try {
+    const r = await api.setLessonAudience(talk.value.id, key)
+    talk.value.lesson = { ...talk.value.lesson, audience: r.audience, audience_label: r.audience_label, mine: true }
+    await lesson.loadMine()
+    ui.toast(`Lesson set for ${AUDIENCE_LABELS[key]}`, 'ok', 1800)
+  } catch (e: any) {
+    ui.toast(e.message || 'Could not change the class', 'error')
+  }
+}
 
 function ask(text: string) {
   draft.value = `About this passage from the talk:\n\n“${text}”\n\n`
@@ -111,6 +125,17 @@ onBeforeUnmount(endDrag)
             In my lessons ✓
           </button>
           <button v-else class="small" @click="lesson.addMine(talk.id)">Add to my lessons</button>
+          <label class="class-pick small">
+            <span class="muted">Class</span>
+            <select
+              :value="talk.lesson.audience"
+              aria-label="Who this lesson is for"
+              title="The digest's questions and Ask AI are written for this class"
+              @change="setAudience(($event.target as HTMLSelectElement).value as AudienceKey)"
+            >
+              <option v-for="[k, l] in audienceOptions" :key="k" :value="k">{{ l }}</option>
+            </select>
+          </label>
         </div>
         <div class="row between neighbors small">
           <RouterLink v-if="talk.prev" :to="talkRoute(talk.prev.id)" class="muted">‹ {{ talk.prev.title }}</RouterLink>
@@ -225,6 +250,20 @@ h1 {
 }
 .current-row {
   margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.class-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.class-pick select {
+  width: auto;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
 }
 .neighbors {
   margin-top: 1rem;

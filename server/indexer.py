@@ -1,4 +1,4 @@
-"""Build the search index from the scraped talks JSON, the scripture JSON and Josephus.
+"""Build the search index from the scraped talks JSON, the scripture JSON, Josephus and the Church manuals.
 
 Rebuilds every index table from scratch; user tables are untouched. Chunk
 embeddings are reused for chunks whose text hash is unchanged so a re-index
@@ -25,8 +25,11 @@ from .citations import (
 from .config import (
     TALKS_JSON, SCRIPTURES_JSON, CHUNKS_NPY, CHUNK_HASHES, EMBEDDINGS_DIR,
     CHUNK_TARGET_WORDS, CHUNK_MAX_WORDS, DEFAULT_EMBEDDING_MODEL, JOSEPHUS_NPY, JOSEPHUS_HASHES,
+    MANUALS_NPY, MANUALS_HASHES,
 )
+from .audience import parse_calling, talk_audience_tags
 from .josephus import download_josephus, have_josephus, load_josephus_into_db, row_label, WORKS_BY_KEY
+from .manuals import load_manuals_into_db
 from .scriptures import load_scriptures_into_db, download_scriptures
 
 MONTH_NAMES = {4: "April", 10: "October"}
@@ -47,6 +50,9 @@ class IndexStats:
     josephus_sections: int = 0
     josephus_chunks: int = 0
     josephus_embedded: int = 0
+    manual_pages: int = 0
+    manual_chunks: int = 0
+    manual_embedded: int = 0
     seconds: float = 0.0
     extra: dict = field(default_factory=dict)
 
@@ -308,6 +314,7 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         except Exception:
             old_vecs = {}
     old_josephus = {} if skip_embeddings else load_old_vectors(JOSEPHUS_NPY, JOSEPHUS_HASHES)
+    old_manuals = {} if skip_embeddings else load_old_vectors(MANUALS_NPY, MANUALS_HASHES)
 
     report("loading talks")
     with open(talks_json, encoding="utf-8") as f:
@@ -348,7 +355,10 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
                 flags = mark_notes(paragraphs)
                 items = [(p, fl, None, None) for p, fl in zip(paragraphs, flags)]
             wc = sum(len(p.split()) for p, fl, _m, _r in items if not fl)
-            talk_rows.append((tid, cid, speaker, title, t["url"], wc, ord_))
+            body_texts = [p for p, fl, _m, _r in items if not fl]
+            calling = parse_calling(body_texts)
+            tags = talk_audience_tags(title, speaker, calling, "\n".join(body_texts[2:]))
+            talk_rows.append((tid, cid, speaker, title, t["url"], wc, ord_, calling, " ".join(tags)))
             plist = []
             for idx, (p, fl, marker, note_refs) in enumerate(items):
                 para_rows.append((tid, idx, p, int(fl), marker, note_refs))
@@ -360,7 +370,8 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         conn.executemany("INSERT INTO conferences(id, year, month, label, url) VALUES(?,?,?,?,?)",
                          conferences.values())
         conn.executemany(
-            "INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord, calling, audience_tags) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
             talk_rows)
         conn.executemany("INSERT INTO paragraphs(talk_id, idx, text, is_note, marker, note_refs) VALUES(?,?,?,?,?,?)", para_rows)
         conn.executemany("INSERT INTO talks_fts(id, title, speaker) VALUES(?,?,?)",
@@ -426,6 +437,24 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         conn.executemany("INSERT INTO josephus_chunks(section_id, text, text_hash) VALUES(?,?,?)", jrows)
     stats.josephus_chunks = len(jrows)
 
+    # ---- Church manuals (optional: only once `download-manuals` has been run)
+    report("manuals")
+    stats.manual_pages = load_manuals_into_db(conn)
+    mrows: list[tuple] = []   # (page_id, para_start, text, hash)
+    pages = conn.execute("SELECT p.id, p.title, m.title AS manual FROM manual_pages p "
+                         "JOIN manuals m ON m.key=p.manual_key ORDER BY m.ord, p.ord").fetchall()
+    for pg in pages:
+        paras = [(r["idx"], r["text"]) for r in conn.execute(
+            "SELECT idx, text FROM manual_paragraphs WHERE page_id=? AND heading=0 ORDER BY idx", (pg["id"],))]
+        prefix = f"{pg['manual']}: {pg['title']}\n"
+        for ps, _pe, text in chunk_paragraphs(paras):
+            for piece in split_words(text):
+                full = prefix + piece
+                mrows.append((pg["id"], ps, full, text_hash(full)))
+    with dbm.transaction(conn):
+        conn.executemany("INSERT INTO manual_chunks(page_id, para_start, text, text_hash) VALUES(?,?,?,?)", mrows)
+    stats.manual_chunks = len(mrows)
+
     # ---- chunks + embeddings
     report("chunking")
     chunk_rows: list[tuple] = []   # (talk_id, para_start, para_end, text, hash)
@@ -461,6 +490,9 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
         stats.josephus_embedded = embed_with_reuse(
             [r[1] for r in jrows], [r[2] for r in jrows], old_josephus, embedding_model,
             JOSEPHUS_NPY, JOSEPHUS_HASHES, progress)
+        stats.manual_embedded = embed_with_reuse(
+            [r[2] for r in mrows], [r[3] for r in mrows], old_manuals, embedding_model,
+            MANUALS_NPY, MANUALS_HASHES, progress)
         dbm.set_meta(conn, "embedding_model", embedding_model)
 
     dbm.set_meta(conn, "built_at", time.strftime("%Y-%m-%dT%H:%M:%S"))

@@ -1,13 +1,36 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { api, type Conference, type TalkSummary } from '../api'
+import { RouterLink, useRoute } from 'vue-router'
+import { api, AUDIENCE_LABELS, type Conference, type TalkSummary } from '../api'
+import TopicSuggest from '../components/TopicSuggest.vue'
 import { talkRoute } from '../router'
 import { useAuthStore } from '../stores/auth'
 import { useLessonStore } from '../stores/lesson'
 
 const auth = useAuthStore()
 const lesson = useLessonStore()
+const route = useRoute()
+
+// How to find a talk: by topic (suggestions) or by conference. A ?topic= link opens the topic tab.
+type Finder = 'topic' | 'conference'
+const initialTopic = typeof route.query.topic === 'string' ? route.query.topic : ''
+const wantTopic = !!initialTopic || route.query.find === 'topic'
+const finder = ref<Finder>(wantTopic ? 'topic' : 'conference')
+if (!wantTopic) {
+  try {
+    const saved = localStorage.getItem('lp.finder')
+    if (saved === 'topic' || saved === 'conference') finder.value = saved
+  } catch {
+    /* storage unavailable */
+  }
+}
+watch(finder, (f) => {
+  try {
+    localStorage.setItem('lp.finder', f)
+  } catch {
+    /* ignore */
+  }
+})
 
 const conferences = ref<Conference[]>([])
 const conferenceId = ref('')
@@ -81,14 +104,17 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
     <section class="col mine">
       <h1>{{ firstName ? `${firstName}, your lessons` : 'Your lessons' }}</h1>
       <p v-if="!lesson.mine.length" class="empty">
-        Nothing in progress. Pick a talk on the right and choose “Add to my lessons” in its header.
+        Nothing in progress. Find a talk by topic or conference on the right, or open one and choose “Add to my
+        lessons” in its header.
       </p>
       <ul v-else class="cards">
         <li v-for="m in lesson.mine" :key="m.talk.id" class="card">
           <RouterLink :to="talkRoute(m.talk.id)" class="card-main">
             <span class="card-title">{{ m.talk.title }}</span>
             <span class="talk-meta">{{ m.talk.speaker }}, {{ m.talk.conference }}</span>
-            <span v-if="lessonMeta(m)" class="card-meta">{{ lessonMeta(m) }}</span>
+            <span class="card-meta">
+              {{ AUDIENCE_LABELS[m.audience] || 'Elders quorum' }}<template v-if="lessonMeta(m)"> · {{ lessonMeta(m) }}</template>
+            </span>
           </RouterLink>
           <div class="card-actions">
             <RouterLink :to="talkRoute(m.talk.id)" class="btn-link">Continue</RouterLink>
@@ -120,6 +146,16 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
 
     <aside class="col pick">
       <h2>Start a lesson</h2>
+      <div class="seg finder" role="tablist" aria-label="Find a talk">
+        <button type="button" role="tab" class="small" :aria-selected="finder === 'topic'" :class="{ on: finder === 'topic' }" @click="finder = 'topic'">
+          By topic
+        </button>
+        <button type="button" role="tab" class="small" :aria-selected="finder === 'conference'" :class="{ on: finder === 'conference' }" @click="finder = 'conference'">
+          By conference
+        </button>
+      </div>
+      <TopicSuggest v-if="finder === 'topic'" :initial-topic="initialTopic" />
+      <template v-else>
       <div class="controls">
         <select v-model="conferenceId" aria-label="Conference">
           <option v-for="c in conferences" :key="c.id" :value="c.id">{{ c.label }}</option>
@@ -144,6 +180,7 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
       <p v-if="currentConf && !results" class="faint small">
         {{ currentConf.label }} <a :href="currentConf.url" target="_blank" rel="noopener">on churchofjesuschrist.org</a>
       </p>
+      </template>
     </aside>
   </div>
 </template>
@@ -235,6 +272,27 @@ h3 {
   border-radius: 6px;
   padding: 1.1rem 1.1rem 0.75rem;
   background: var(--paper-2);
+}
+.finder {
+  margin-bottom: 0.75rem;
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.seg button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.seg button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.seg button.on {
+  background: var(--blue);
+  color: #fff;
 }
 .controls {
   display: grid;

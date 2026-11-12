@@ -55,7 +55,7 @@ class OllamaProvider(Provider):
         try:
             return json.loads(content)
         except ValueError:
-            raise ProviderError("The model returned malformed JSON for the digest.")
+            raise ProviderError("The model returned malformed JSON.")
 
     def stream(self, system: str, history: list[dict], user_message: str,
                tools: list[ToolSpec], execute: ToolExecutor) -> Iterator[ChatEvent]:

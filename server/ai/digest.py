@@ -1,6 +1,6 @@
 """Talk digest: the essence of a talk, its key quotations, and discussion questions.
 
-Generated once per talk with the configured AI provider (structured JSON) and
+Generated once per talk and audience (the questions are written for the class) with the configured AI provider (structured JSON) and
 cached in the ``digests`` table until the user asks to regenerate.
 """
 
@@ -11,6 +11,7 @@ import sqlite3
 
 from . import get_provider
 from .base import ProviderError
+from ..audience import DEFAULT_KEY, class_members, class_name, question_style
 from ..settings import get_settings
 
 DIGEST_SCHEMA = {
@@ -63,7 +64,7 @@ DIGEST_SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM = """You prepare a reader's digest of a General Conference talk for someone who will lead an elders quorum discussion on it.
+SYSTEM = """You prepare a reader's digest of a General Conference talk for someone who will lead {class_name} discussion on it.
 
 Work only from the talk text provided. Do not add doctrine, commentary or testimony of your own; the digest is a faithful distillation of what the speaker said, plus questions that will get a class talking about it.
 
@@ -71,8 +72,13 @@ Guidelines:
 - essence: the central message in 2–4 sentences, using the speaker's own framing and key terms.
 - main_points: 4–8 observations that carry the talk's argument or structure, in the order they appear. Each points at the paragraph index that best supports it (indices are given in [brackets] before each paragraph).
 - key_quotes: 3–6 sentences copied verbatim from the talk that a teacher would want to read aloud. Never paraphrase or splice; copy exactly.
-- questions: 6–10 thought-provoking questions for a quorum of adult men. Mix kinds: "opening" (draws people in, no wrong answers), "discussion" (probes the talk's ideas, invites disagreement or nuance), "application" (connects the teaching to their week, families, callings). Avoid yes/no questions and avoid questions whose answer is simply restating the talk. Each has a short teacher note on what it is meant to surface.
+- questions: 6–10 thought-provoking questions for {class_members}. Mix kinds: "opening" (draws people in, no wrong answers), "discussion" (probes the talk's ideas, invites disagreement or nuance), "application" (connects the teaching to their own lives). {question_style} Avoid yes/no questions and avoid questions whose answer is simply restating the talk. Each has a short teacher note on what it is meant to surface.
 """
+
+
+def system_prompt(audience: str = DEFAULT_KEY) -> str:
+    return SYSTEM.format(class_name=class_name(audience), class_members=class_members(audience),
+                         question_style=question_style(audience))
 
 
 def build_user_message(talk: dict, paragraphs: list[dict]) -> str:
@@ -81,33 +87,34 @@ def build_user_message(talk: dict, paragraphs: list[dict]) -> str:
             f"--- TALK (paragraph indices in brackets) ---\n{body}")
 
 
-def load_digest(conn: sqlite3.Connection, talk_id: str) -> dict | None:
-    r = conn.execute("SELECT * FROM digests WHERE talk_id=?", (talk_id,)).fetchone()
+def load_digest(conn: sqlite3.Connection, talk_id: str, audience: str = DEFAULT_KEY) -> dict | None:
+    r = conn.execute("SELECT * FROM digests WHERE talk_id=? AND audience=?", (talk_id, audience)).fetchone()
     if not r:
         return None
     data = json.loads(r["json"])
-    return {"talk_id": talk_id, "provider": r["provider"], "model": r["model"],
+    return {"talk_id": talk_id, "audience": audience, "provider": r["provider"], "model": r["model"],
             "created_at": r["created_at"], **data}
 
 
-def generate_digest(conn: sqlite3.Connection, talk: dict, paragraphs: list[dict]) -> dict:
+def generate_digest(conn: sqlite3.Connection, talk: dict, paragraphs: list[dict],
+                    audience: str = DEFAULT_KEY) -> dict:
     provider = get_provider(get_settings(conn))
-    data = provider.generate_json(SYSTEM, build_user_message(talk, paragraphs), DIGEST_SCHEMA)
+    data = provider.generate_json(system_prompt(audience), build_user_message(talk, paragraphs), DIGEST_SCHEMA)
     valid = {p["idx"] for p in paragraphs}
     for item in data.get("main_points", []) + data.get("key_quotes", []):
         if item.get("paragraph") not in valid:
             item["paragraph"] = None
     conn.execute(
-        "INSERT INTO digests(talk_id, provider, model, json, created_at) VALUES(?,?,?,?,datetime('now')) "
-        "ON CONFLICT(talk_id) DO UPDATE SET provider=excluded.provider, model=excluded.model, "
+        "INSERT INTO digests(talk_id, audience, provider, model, json, created_at) VALUES(?,?,?,?,?,datetime('now')) "
+        "ON CONFLICT(talk_id, audience) DO UPDATE SET provider=excluded.provider, model=excluded.model, "
         "json=excluded.json, created_at=excluded.created_at",
-        (talk["id"], provider.name, provider.model, json.dumps(data, ensure_ascii=False)))
+        (talk["id"], audience, provider.name, provider.model, json.dumps(data, ensure_ascii=False)))
     conn.commit()
-    return load_digest(conn, talk["id"])
+    return load_digest(conn, talk["id"], audience)
 
 
-def delete_digest(conn: sqlite3.Connection, talk_id: str) -> None:
-    conn.execute("DELETE FROM digests WHERE talk_id=?", (talk_id,))
+def delete_digest(conn: sqlite3.Connection, talk_id: str, audience: str = DEFAULT_KEY) -> None:
+    conn.execute("DELETE FROM digests WHERE talk_id=? AND audience=?", (talk_id, audience))
     conn.commit()
 
 

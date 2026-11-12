@@ -3,6 +3,7 @@
     python -m server.cli download-scriptures
     python -m server.cli download-josephus [--force]
     python -m server.cli download-apocrypha [--force]
+    python -m server.cli download-manuals [--only KEY ...] [--refresh]
     python -m server.cli index [--skip-embeddings] [--talks PATH]
     python -m server.cli migrate [--admin-email EMAIL [--password PW]]
     python -m server.cli serve [--host 127.0.0.1] [--port 8765] [--reload]
@@ -35,6 +36,23 @@ def cmd_download_apocrypha(args: argparse.Namespace) -> None:
     from .apocrypha import download_apocrypha
     p = download_apocrypha(force=args.force)
     print(f"apocrypha: {p} ({p.stat().st_size/1e6:.1f} MB)")
+
+
+def cmd_download_manuals(args: argparse.Namespace) -> None:
+    from .manuals import download_manuals, SOURCES_BY_KEY
+    unknown = [k for k in args.only or [] if k not in SOURCES_BY_KEY]
+    if unknown:
+        sys.exit(f"unknown source(s): {', '.join(unknown)}. Known: {', '.join(SOURCES_BY_KEY)}")
+    last = {"key": None}
+
+    def progress(key: str, done: int, total: int) -> None:
+        if key != last["key"] or done % 25 == 0 or done == total:
+            print(f"  [{key}] {done}/{total}", flush=True)
+            last["key"] = key
+
+    data = download_manuals(only=args.only, refresh=args.refresh, progress=progress)
+    for m in data["manuals"]:
+        print(f"{m['key']:20s} {len(m['pages'])} pages")
 
 
 def cmd_index(args: argparse.Namespace) -> None:
@@ -98,6 +116,11 @@ def main(argv: list[str] | None = None) -> None:
     da = sub.add_parser("download-apocrypha", help="fetch the KJV Apocrypha into data/apocrypha.json")
     da.add_argument("--force", action="store_true")
     da.set_defaults(fn=cmd_download_apocrypha)
+
+    dm = sub.add_parser("download-manuals", help="fetch Church manuals and lessons into data/manuals/")
+    dm.add_argument("--only", nargs="+", metavar="KEY", help="fetch only these sources")
+    dm.add_argument("--refresh", action="store_true", help="re-fetch pages already cached")
+    dm.set_defaults(fn=cmd_download_manuals)
 
     i = sub.add_parser("index", help="(re)build the search index")
     i.add_argument("--talks", help="path to talks JSON (default data/general_conference_talks.json)")

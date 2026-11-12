@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type Lesson, type MyLesson, type Pin } from '../api'
+import { api, type AudienceKey, type Lesson, type MyLesson, type Pin } from '../api'
 import { useUiStore } from './ui'
 
 export const useLessonStore = defineStore('lesson', () => {
@@ -24,9 +24,9 @@ export const useLessonStore = defineStore('lesson', () => {
   function isMine(id: string): boolean {
     return mine.value.some((m) => m.talk.id === id)
   }
-  async function addMine(id: string) {
-    mine.value = await api.addMyLesson(id)
-    ui().toast('Added to my lessons', 'ok', 1800)
+  async function addMine(id: string, audience?: AudienceKey, quiet = false) {
+    mine.value = await api.addMyLesson(id, audience)
+    if (!quiet) ui().toast('Added to my lessons', 'ok', 1800)
   }
   async function removeMine(id: string) {
     mine.value = await api.removeMyLesson(id)

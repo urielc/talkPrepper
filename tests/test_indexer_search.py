@@ -95,8 +95,8 @@ def conn():
     c.row_factory = sqlite3.Row
     dbm.ensure_schema(c)
     c.execute("INSERT INTO conferences VALUES('2026-04', 2026, 4, 'April 2026', 'u')")
-    c.execute("INSERT INTO talks VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
-    c.execute("INSERT INTO talks VALUES('2026-04/b', '2026-04', 'Elder B', 'Talk B', 'http://b', 10, 1)")
+    c.execute("INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
+    c.execute("INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES('2026-04/b', '2026-04', 'Elder B', 'Talk B', 'http://b', 10, 1)")
     c.execute("INSERT INTO paragraphs(talk_id, idx, text, is_note) VALUES('2026-04/a', 0, 'Faith is a principle of action.', 0)")
     c.execute("INSERT INTO scriptures(volume, book, book_short, chapter, verse, text) VALUES('BoM','Alma','Alma',32,21,'And now as I said concerning faith')")
     c.commit()

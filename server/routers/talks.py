@@ -8,6 +8,7 @@ import sqlite3
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..audience import CLASSES, DEFAULT_KEY, label as audience_label
 from ..deps import get_conn, get_engine, get_user
 from ..search import SearchEngine, fts_query
 from ..scriptures import format_ref, display_book
@@ -55,6 +56,17 @@ def get_talk_or_404(conn: sqlite3.Connection, talk_id: str) -> sqlite3.Row:
 
 class MyLessonBody(BaseModel):
     talk_id: str
+    audience: str | None = None     # audience key (server/audience.py); None leaves it unchanged
+
+
+class AudienceBody(BaseModel):
+    audience: str
+
+
+def lesson_audience(conn: sqlite3.Connection, uid: int, talk_id: str) -> str:
+    """The audience key this user set for a talk's lesson (elders quorum when unset)."""
+    row = conn.execute("SELECT audience FROM working_on WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
+    return row["audience"] if row and row["audience"] in CLASSES else DEFAULT_KEY
 
 
 class ReorderMine(BaseModel):
@@ -63,15 +75,17 @@ class ReorderMine(BaseModel):
 
 def my_lessons(conn: sqlite3.Connection, uid: int) -> list[dict]:
     rows = conn.execute(
-        "SELECT w.talk_id, w.added_at, w.ord, "
+        "SELECT w.talk_id, w.added_at, w.ord, w.audience, "
         "COALESCE((SELECT LENGTH(notes_md) FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id), 0) AS notes_len, "
         "(SELECT COUNT(*) FROM pins p WHERE p.user_id=w.user_id AND p.talk_id=w.talk_id) AS pin_count, "
-        "EXISTS(SELECT 1 FROM digests d WHERE d.talk_id=w.talk_id) AS has_digest, "
+        "EXISTS(SELECT 1 FROM digests d WHERE d.talk_id=w.talk_id AND d.audience=COALESCE(w.audience, 'adults-male')) AS has_digest, "
         "(SELECT updated_at FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id) AS updated_at "
         "FROM working_on w WHERE w.user_id=? ORDER BY w.ord, w.added_at", (uid,)).fetchall()
     talks = fetch_talks(conn, [r["talk_id"] for r in rows])
     return [{"talk": talks[r["talk_id"]], "added_at": r["added_at"], "notes_len": r["notes_len"],
-             "pin_count": r["pin_count"], "has_digest": bool(r["has_digest"]), "updated_at": r["updated_at"]}
+             "pin_count": r["pin_count"], "has_digest": bool(r["has_digest"]), "updated_at": r["updated_at"],
+             "audience": r["audience"] if r["audience"] in CLASSES else DEFAULT_KEY,
+             "audience_label": audience_label(r["audience"] if r["audience"] in CLASSES else DEFAULT_KEY)}
             for r in rows if r["talk_id"] in talks]
 
 
@@ -85,9 +99,26 @@ def list_my_lessons(conn=Depends(get_conn), user=Depends(get_user)):
 def add_my_lesson(body: MyLessonBody, conn=Depends(get_conn), user=Depends(get_user)):
     get_talk_or_404(conn, body.talk_id)
     nxt = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM working_on WHERE user_id=?", (user["id"],)).fetchone()[0]
+    if body.audience is not None and body.audience not in CLASSES:
+        raise HTTPException(422, f"unknown audience {body.audience!r}")
     conn.execute("INSERT OR IGNORE INTO working_on(user_id, talk_id, ord) VALUES(?,?,?)", (user["id"], body.talk_id, nxt))
+    if body.audience is not None:
+        conn.execute("UPDATE working_on SET audience=? WHERE user_id=? AND talk_id=?",
+                     (body.audience, user["id"], body.talk_id))
     conn.commit()
     return my_lessons(conn, user["id"])
+
+
+@router.put("/my-lessons/{talk_id:path}/audience")
+def set_lesson_audience(talk_id: str, body: AudienceBody, conn=Depends(get_conn), user=Depends(get_user)):
+    if body.audience not in CLASSES:
+        raise HTTPException(422, f"unknown audience {body.audience!r}")
+    get_talk_or_404(conn, talk_id)
+    nxt = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM working_on WHERE user_id=?", (user["id"],)).fetchone()[0]
+    conn.execute("INSERT OR IGNORE INTO working_on(user_id, talk_id, ord) VALUES(?,?,?)", (user["id"], talk_id, nxt))
+    conn.execute("UPDATE working_on SET audience=? WHERE user_id=? AND talk_id=?", (body.audience, user["id"], talk_id))
+    conn.commit()
+    return {"audience": body.audience, "audience_label": audience_label(body.audience)}
 
 
 @router.post("/my-lessons/reorder")
@@ -334,5 +365,7 @@ def talk_detail(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
     les = conn.execute("SELECT notes_md FROM lessons WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
     pins = conn.execute("SELECT COUNT(*) FROM pins WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()[0]
     mine = conn.execute("SELECT 1 FROM working_on WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
-    talk["lesson"] = {"has_notes": bool(les and les["notes_md"]), "pin_count": pins, "mine": bool(mine)}
+    aud = lesson_audience(conn, uid, talk_id)
+    talk["lesson"] = {"has_notes": bool(les and les["notes_md"]), "pin_count": pins, "mine": bool(mine),
+                      "audience": aud, "audience_label": audience_label(aud)}
     return talk

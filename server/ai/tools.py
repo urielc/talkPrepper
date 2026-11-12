@@ -8,6 +8,7 @@ import json
 
 from ..citations import parse_scripture_refs
 from .. import josephus as jos
+from .. import manuals as man
 from ..routers.scriptures import parse_single_ref
 from ..routers.talks import fetch_talks, talks_citing
 from ..scriptures import get_verses, format_ref, search_verses, BOOK_VOLUME, APOCRYPHA
@@ -130,6 +131,39 @@ TOOLS: list[ToolSpec] = [
                                   "description": "Add Whiston's own 18th-century footnotes"},
             },
             "required": ["ref"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        "search_manuals",
+        "Search Church teaching material: Come, Follow Me—For Home and Church: Old Testament 2026 (weekly "
+        "lessons, with separate 'Ideas for Teaching Children' pages), For the Strength of Youth Sunday lessons "
+        "and guide, Teachings of Presidents of the Church (Russell M. Nelson, Thomas S. Monson, Gordon B. "
+        "Hinckley), Gospel Topics, the self-reliance manuals (personal finances, finding a job, starting a "
+        "business, emotional resilience), and the Member's Guide to Temple and Family History Work. Returns "
+        "page URIs, titles and snippets. Filter by audience to find material for children, youth or adults.",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Topic, phrase or question"},
+                "audience": {"type": "string", "enum": ["children", "youth", "adults"],
+                             "description": "Optional: only material meant for this age group"},
+                "manual": {"type": "string", "enum": [s.key for s in man.SOURCES],
+                           "description": "Optional: limit to one source"},
+                "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        "get_manual_page",
+        "Read a Church manual page by the URI search_manuals returned (e.g. "
+        "'/manual/come-follow-me-for-home-and-church-old-testament-2026/46'). Read a page before quoting it.",
+        {
+            "type": "object",
+            "properties": {"uri": {"type": "string"}},
+            "required": ["uri"],
             "additionalProperties": False,
         },
     ),
@@ -296,6 +330,34 @@ class ToolContext:
                     out.append(f"  Whiston's note: {n}")
             out.append("")
         return ToolResult("\n".join(out).strip(), [{"type": "josephus", "ref": lab}], summary=f"Read Josephus, {lab}")
+
+    def tool_search_manuals(self, query: str, audience: str | None = None, manual: str | None = None,
+                            limit: int = 8) -> ToolResult:
+        from ..suggest import fetch_pages
+        limit = max(1, min(int(limit or 8), 20))
+        hits = self.engine.manual_search(query, "hybrid", limit, manual=manual, audience=audience)
+        pages = fetch_pages(self.conn, [int(h.talk_id) for h in hits])
+        lines, refs = [], []
+        for h in hits:
+            p = pages.get(int(h.talk_id))
+            if not p:
+                continue
+            snip = " | ".join(x.replace("<mark>", "").replace("</mark>", "") for x in h.snippets[:2])
+            lines.append(f"- [[manual:{p['uri']}]] “{p['title']}”, {p['manual']} (for: {', '.join(p['audience'])})"
+                         f"\n  snippet: {snip}")
+            refs.append({"type": "manual", "ref": p["uri"], "title": p["title"]})
+        text = (f"Manual search “{query}”: {len(lines)} pages\n" + "\n".join(lines)) if lines else \
+            f"No manual pages matched “{query}”."
+        return ToolResult(text, refs, summary=f"Searched Church manuals for “{query}” ({len(lines)} results)")
+
+    def tool_get_manual_page(self, uri: str) -> ToolResult:
+        page = man.get_page(self.conn, uri)
+        if page is None:
+            return ToolResult(f"No manual page {uri}. Use a URI from search_manuals.", summary=f"{uri}: not found")
+        text = (f"[[manual:{page['uri']}]] “{page['title']}”, {page['manual_title']} "
+                f"(for: {', '.join(page['audience'].split())})\n\n" + man.page_text(self.conn, page["id"]))
+        return ToolResult(text, [{"type": "manual", "ref": page["uri"], "title": page["title"]}],
+                          summary=f"Read “{page['title']}”")
 
     def tool_talks_citing_talk(self, talk_id: str) -> ToolResult:
         t = fetch_talks(self.conn, [talk_id]).get(talk_id)

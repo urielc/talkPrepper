@@ -17,6 +17,10 @@ CHUNK_HASHES = EMBEDDINGS_DIR / "chunk_hashes.json"
 JOSEPHUS_DIR = DATA_DIR / "josephus"
 JOSEPHUS_NPY = EMBEDDINGS_DIR / "josephus.npy"
 JOSEPHUS_HASHES = EMBEDDINGS_DIR / "josephus_hashes.json"
+MANUALS_DIR = DATA_DIR / "manuals"
+MANUALS_JSON = MANUALS_DIR / "manuals.json"
+MANUALS_NPY = EMBEDDINGS_DIR / "manuals.npy"
+MANUALS_HASHES = EMBEDDINGS_DIR / "manuals_hashes.json"
 WEB_DIST = ROOT / "web" / "dist"
 
 SCRIPTURES_URL = (

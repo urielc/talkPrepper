@@ -18,7 +18,7 @@ from ..cite_check import CitationChecker, StreamScanner, scan
 from ..deps import get_conn, get_engine, get_user
 from ..log import security
 from ..settings import get_settings
-from .talks import talk_detail
+from .talks import lesson_audience, talk_detail
 
 router = APIRouter(tags=["chat"])
 
@@ -65,7 +65,7 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
     except ProviderError as e:
         raise HTTPException(400, str(e))
     talk = talk_detail(body.talk_id, conn, user)  # 404s if missing
-    system = build_system(talk, talk["paragraphs"])
+    system = build_system(talk, talk["paragraphs"], lesson_audience(conn, uid, body.talk_id))
 
     if body.session_id:
         row = conn.execute("SELECT id FROM chat_sessions WHERE id=? AND talk_id=? AND user_id=?",

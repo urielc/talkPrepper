@@ -56,6 +56,40 @@ def apply_schema(conn: sqlite3.Connection) -> list[str]:
         conn.execute("ALTER TABLE lessons ADD COLUMN hidden_at TEXT")
         done.append("lessons: added hidden_at")
 
+    # Index columns added after a build: present (empty) until the next re-index fills them,
+    # so new code can run against an index built by older code.
+    if _table_exists(conn, "talks"):
+        cols = _columns(conn, "talks")
+        if "calling" not in cols:
+            conn.execute("ALTER TABLE talks ADD COLUMN calling TEXT NOT NULL DEFAULT ''")
+            done.append("talks: added calling")
+        if "audience_tags" not in cols:
+            conn.execute("ALTER TABLE talks ADD COLUMN audience_tags TEXT NOT NULL DEFAULT ''")
+            done.append("talks: added audience_tags")
+
+    if _table_exists(conn, "working_on") and "audience" not in _columns(conn, "working_on"):
+        conn.execute("ALTER TABLE working_on ADD COLUMN audience TEXT")
+        done.append("working_on: added audience")
+
+    # digests: PK talk_id -> (talk_id, audience). Existing digests were written for an elders quorum.
+    if _table_exists(conn, "digests") and "audience" not in _columns(conn, "digests"):
+        conn.executescript("""
+            ALTER TABLE digests RENAME TO digests_old;
+            CREATE TABLE digests (
+                talk_id    TEXT NOT NULL,
+                audience   TEXT NOT NULL DEFAULT 'adults-male',
+                provider   TEXT NOT NULL,
+                model      TEXT NOT NULL,
+                json       TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (talk_id, audience)
+            );
+            INSERT INTO digests(talk_id, audience, provider, model, json, created_at)
+                SELECT talk_id, 'adults-male', provider, model, json, created_at FROM digests_old;
+            DROP TABLE digests_old;
+        """)
+        done.append("digests: keyed by talk and audience")
+
     # The single current talk becomes a working_on row (owner assigned when the first user is created).
     row = conn.execute("SELECT value FROM settings WHERE key='current_talk_id'").fetchone()
     if row:

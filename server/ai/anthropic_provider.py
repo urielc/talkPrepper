@@ -95,12 +95,12 @@ class AnthropicProvider(Provider):
         except anthropic.APIConnectionError as e:
             raise ProviderError(f"Could not reach the Anthropic API: {e}")
         if resp.stop_reason == "refusal":
-            raise ProviderError("The model declined to generate this digest.")
+            raise ProviderError("The model declined this request.")
         text = next((b.text for b in resp.content if b.type == "text"), "")
         try:
             return json.loads(text)
         except ValueError:
-            raise ProviderError("The model returned malformed JSON for the digest.")
+            raise ProviderError("The model returned malformed JSON.")
 
     def stream(self, system: str, history: list[dict], user_message: str,
                tools: list[ToolSpec], execute: ToolExecutor) -> Iterator[ChatEvent]:

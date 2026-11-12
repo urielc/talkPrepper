@@ -47,6 +47,7 @@ export const useUiStore = defineStore('ui', () => {
   const scriptureRef = ref<string | null>(null)
   function openScripture(refText: string) {
     josephusRef.value = null
+    manualUri.value = null
     scriptureRef.value = refText
   }
   function closeScripture() {
@@ -57,10 +58,22 @@ export const useUiStore = defineStore('ui', () => {
   const josephusRef = ref<string | null>(null)
   function openJosephus(refText: string) {
     scriptureRef.value = null
+    manualUri.value = null
     josephusRef.value = refText
   }
   function closeJosephus() {
     josephusRef.value = null
+  }
+
+  // Church manual panel: same place again
+  const manualUri = ref<string | null>(null)
+  function openManual(uri: string) {
+    scriptureRef.value = null
+    josephusRef.value = null
+    manualUri.value = uri
+  }
+  function closeManual() {
+    manualUri.value = null
   }
 
   // Ask AI sidebar
@@ -97,6 +110,9 @@ export const useUiStore = defineStore('ui', () => {
     josephusRef,
     openJosephus,
     closeJosephus,
+    manualUri,
+    openManual,
+    closeManual,
     aiOpen,
     openAi,
     closeAi,

@@ -8,7 +8,8 @@ mark what does not.
 A talk id must be a row in ``talks``. A scripture only has to resolve to real
 verses — the whole canon is on disk, so a passage the model recalled without
 calling a tool is still verifiable, and is allowed. Josephus is treated the same
-way: the reference must resolve to sections in the ``josephus`` table.
+way: the reference must resolve to sections in the ``josephus`` table, and a
+manual URI must be a page in ``manual_pages``.
 """
 
 from __future__ import annotations
@@ -17,11 +18,12 @@ import re
 import sqlite3
 
 from . import josephus as jos
+from . import manuals as man
 from .citations import parse_ref
 from .scriptures import format_ref, verses_exist
 
 # Same shape the client parses in web/src/utils/markdown.ts.
-CITE_RE = re.compile(r"\[\[(talk|scripture|josephus):([^\]]+)\]\]")
+CITE_RE = re.compile(r"\[\[(talk|scripture|josephus|manual):([^\]]+)\]\]")
 
 # Longest citation worth holding a partial match open for.
 MAX_CITE = 200
@@ -60,6 +62,9 @@ class CitationChecker:
         if kind == "josephus":
             rows = jos.lookup(self.conn, value)
             return {"ok": bool(rows), "label": jos.range_label(rows) if rows else None}
+        if kind == "manual":
+            page = man.get_page(self.conn, value)
+            return {"ok": page is not None, "label": page["title"] if page else None}
         return {"ok": False, "label": None}
 
 

@@ -12,7 +12,7 @@ def conn():
     c.row_factory = sqlite3.Row
     dbm.ensure_schema(c)
     c.execute("INSERT INTO conferences VALUES('2026-04', 2026, 4, 'April 2026', 'u')")
-    c.execute("INSERT INTO talks VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
+    c.execute("INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
     for v, t in ((21, "And now as I said concerning faith"), (22, "And now behold, I say unto you")):
         c.execute("INSERT INTO scriptures(volume, book, book_short, chapter, verse, text) "
                   "VALUES('BoM','Alma','Alma',32,?,?)", (v, t))

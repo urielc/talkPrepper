@@ -3,7 +3,7 @@
 Two groups of tables live in one database file:
 
 * Index tables (conferences, talks, paragraphs, refs, chunks, scriptures,
-  Josephus and their FTS mirrors) are rebuilt from scratch by the indexer.
+  Josephus, Church manuals and their FTS mirrors) are rebuilt from scratch by the indexer.
 * User tables (users, sessions, invites, working_on, settings, lessons, pins,
   digests, chat_*) are created once and never dropped by the indexer.
 """
@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS talks (
     title         TEXT NOT NULL DEFAULT '',
     url           TEXT NOT NULL,
     word_count    INTEGER NOT NULL DEFAULT 0,
-    ord           INTEGER NOT NULL DEFAULT 0
+    ord           INTEGER NOT NULL DEFAULT 0,
+    calling       TEXT NOT NULL DEFAULT '',   -- 'Primary General President'
+    audience_tags TEXT NOT NULL DEFAULT ''    -- 'children youth female …', a soft signal for topic suggestions
 );
 CREATE INDEX IF NOT EXISTS talks_conf ON talks(conference_id, ord);
 
@@ -139,6 +141,45 @@ CREATE TABLE IF NOT EXISTS josephus_chunks (
     text_hash  TEXT NOT NULL
 );
 
+-- Church manuals and lessons (Come, Follow Me, youth lessons, self-reliance, …).
+CREATE TABLE IF NOT EXISTS manuals (
+    key      TEXT PRIMARY KEY,         -- 'cfm-ot-2026'
+    title    TEXT NOT NULL,
+    kind     TEXT NOT NULL,            -- 'Come, Follow Me' | 'Youth lessons' | …
+    audience TEXT NOT NULL DEFAULT '', -- space-separated tags
+    ord      INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS manual_pages (
+    id         INTEGER PRIMARY KEY,
+    uri        TEXT NOT NULL UNIQUE,   -- Gospel Library URI without /study, '#children' for a lesson's children's section
+    manual_key TEXT NOT NULL REFERENCES manuals(key),
+    title      TEXT NOT NULL,
+    audience   TEXT NOT NULL DEFAULT '',
+    ord        INTEGER NOT NULL,
+    url        TEXT NOT NULL,
+    word_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS manual_pages_ord ON manual_pages(manual_key, ord);
+CREATE TABLE IF NOT EXISTS manual_paragraphs (
+    id      INTEGER PRIMARY KEY,
+    page_id INTEGER NOT NULL REFERENCES manual_pages(id),
+    idx     INTEGER NOT NULL,
+    text    TEXT NOT NULL,
+    heading INTEGER NOT NULL DEFAULT 0  -- heading level, 0 for a paragraph
+);
+CREATE INDEX IF NOT EXISTS manual_paragraphs_page ON manual_paragraphs(page_id, idx);
+CREATE VIRTUAL TABLE IF NOT EXISTS manual_fts USING fts5(
+    text, page_id UNINDEXED, content='manual_paragraphs', content_rowid='id',
+    tokenize='porter unicode61'
+);
+CREATE TABLE IF NOT EXISTS manual_chunks (
+    id        INTEGER PRIMARY KEY,     -- row index into manuals.npy
+    page_id   INTEGER NOT NULL REFERENCES manual_pages(id),
+    para_start INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    text_hash TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS index_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -147,6 +188,7 @@ CREATE TABLE IF NOT EXISTS index_meta (
 
 INDEX_TABLES = [
     "paragraphs_fts", "talks_fts", "scriptures_fts", "josephus_fts", "josephus_chunks", "josephus",
+    "manual_fts", "manual_chunks", "manual_paragraphs", "manual_pages", "manuals",
     "scripture_refs", "talk_refs", "chunks", "paragraphs", "talks",
     "conferences", "scriptures", "index_meta",
 ]
@@ -189,6 +231,7 @@ CREATE TABLE IF NOT EXISTS working_on (
     talk_id  TEXT NOT NULL,
     added_at TEXT NOT NULL DEFAULT (datetime('now')),
     ord      INTEGER NOT NULL DEFAULT 0,
+    audience TEXT,                           -- audience key (server/audience.py); NULL = elders quorum
     PRIMARY KEY (user_id, talk_id)
 );
 
@@ -218,11 +261,13 @@ CREATE TABLE IF NOT EXISTS pins (
 CREATE INDEX IF NOT EXISTS pins_lesson ON pins(talk_id, ord);
 
 CREATE TABLE IF NOT EXISTS digests (
-    talk_id    TEXT PRIMARY KEY,
+    talk_id    TEXT NOT NULL,
+    audience   TEXT NOT NULL DEFAULT 'adults-male',  -- audience key the questions were written for
     provider   TEXT NOT NULL,
     model      TEXT NOT NULL,
     json       TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (talk_id, audience)
 );
 
 CREATE TABLE IF NOT EXISTS chat_sessions (

@@ -27,7 +27,7 @@ def client(app_env):
     with TestClient(app_env.app) as c:
         conn = c.app.state.conn
         conn.execute("INSERT INTO conferences VALUES('2026-04', 2026, 4, 'April 2026', 'u')")
-        conn.execute("INSERT INTO talks VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
+        conn.execute("INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord) VALUES('2026-04/a', '2026-04', 'Elder A', 'Talk A', 'http://a', 10, 0)")
         conn.execute("INSERT INTO paragraphs(talk_id, idx, text, is_note) VALUES('2026-04/a', 0, 'Body.', 0)")
         conn.commit()
         yield c

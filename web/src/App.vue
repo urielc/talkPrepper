@@ -9,6 +9,7 @@ import { talkRoute } from './router'
 import TalkDrawer from './components/TalkDrawer.vue'
 import ScripturePanel from './components/ScripturePanel.vue'
 import JosephusPanel from './components/JosephusPanel.vue'
+import ManualPanel from './components/ManualPanel.vue'
 
 const ui = useUiStore()
 const lesson = useLessonStore()
@@ -97,6 +98,7 @@ function cycleTheme() {
       <TalkDrawer />
       <ScripturePanel />
       <JosephusPanel />
+      <ManualPanel />
     </template>
 
     <div class="toasts" aria-live="polite">

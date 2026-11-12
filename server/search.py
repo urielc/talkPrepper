@@ -1,4 +1,4 @@
-"""Keyword (FTS5), semantic (embeddings) and hybrid search over talks and Josephus.
+"""Keyword (FTS5), semantic (embeddings) and hybrid search over talks, Josephus and Church manuals.
 
 One ``SearchEngine`` is created per process; it lazily loads the chunk matrix
 and the embedding model.
@@ -6,6 +6,7 @@ and the embedding model.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import sqlite3
@@ -15,7 +16,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .config import CHUNKS_NPY, DEFAULT_EMBEDDING_MODEL, JOSEPHUS_NPY
+from .config import CHUNKS_NPY, DEFAULT_EMBEDDING_MODEL, JOSEPHUS_NPY, MANUALS_NPY
+from .manuals import matches_audience
 from . import db as dbm
 
 STOPWORDS = set("""
@@ -87,6 +89,9 @@ class SearchEngine:
         self._jmatrix: np.ndarray | None = None
         self._jchunk_sections: list[int] = []
         self._jchunk_ids: list[int] = []
+        self._mmatrix: np.ndarray | None = None
+        self._mchunk_pages: list[int] = []
+        self._mchunk_ids: list[int] = []
 
     # ------------------------------------------------------------ loading
 
@@ -98,6 +103,9 @@ class SearchEngine:
             self._jmatrix = None
             self._jchunk_sections = []
             self._jchunk_ids = []
+            self._mmatrix = None
+            self._mchunk_pages = []
+            self._mchunk_ids = []
 
     def _ensure_matrix(self) -> bool:
         if self._matrix is not None:
@@ -405,6 +413,104 @@ class SearchEngine:
             return self.josephus_semantic(q, limit, allowed)
         return rrf_fuse([self.josephus_keyword(q, limit * 2, allowed),
                          self.josephus_semantic(q, limit * 2, allowed)], limit)
+
+    # ------------------------------------------------------------ Church manuals
+    #
+    # Hits reuse TalkHit with the manual page id (as a string) in ``talk_id``.
+
+    def _ensure_mmatrix(self) -> bool:
+        if self._mmatrix is not None:
+            return True
+        with self._lock:
+            if self._mmatrix is not None:
+                return True
+            if not MANUALS_NPY.exists():
+                return False
+            rows = self.conn.execute("SELECT id, page_id FROM manual_chunks ORDER BY id").fetchall()
+            m = np.load(MANUALS_NPY)
+            if m.shape[0] != len(rows) or not rows:
+                return False
+            self._mchunk_ids = [r["id"] for r in rows]
+            self._mchunk_pages = [r["page_id"] for r in rows]
+            self._mmatrix = m
+            return True
+
+    def _allowed_pages(self, manual: str | None, audience: str | None,
+                       gender: str | None) -> set[str] | None:
+        if not manual and not audience and not gender:
+            return None
+        # Literal queries only: the filter is applied in Python.
+        rows = self.conn.execute("SELECT id, manual_key, audience FROM manual_pages").fetchall()
+        return {str(r["id"]) for r in rows
+                if (not manual or r["manual_key"] == manual) and matches_audience(r["audience"], audience, gender)}
+
+    def _manual_fts(self, match: str, limit: int, allowed: set[str] | None) -> list[TalkHit]:
+        rows = self.conn.execute(
+            "SELECT page_id, bm25(manual_fts) AS score, "
+            "snippet(manual_fts, 0, '<mark>', '</mark>', '…', 32) AS snip "
+            "FROM manual_fts WHERE manual_fts MATCH ? ORDER BY score LIMIT ?",
+            (match, max(limit * 12, 300)),
+        ).fetchall()
+        agg: dict[str, TalkHit] = {}
+        for r in rows:
+            pid = str(r["page_id"])
+            if allowed is not None and pid not in allowed:
+                continue
+            h = agg.get(pid)
+            if h is None:
+                h = agg[pid] = TalkHit(pid, 0.0, [], {"keyword"})
+            h.score += -float(r["score"]) / (1 + 0.5 * len(h.snippets))
+            if len(h.snippets) < 2:
+                h.snippets.append(r["snip"])
+        return sorted(agg.values(), key=lambda h: -h.score)[:limit]
+
+    def manual_keyword(self, q: str, limit: int = 10, allowed: set[str] | None = None) -> list[TalkHit]:
+        match = fts_query(q)
+        if not match:
+            return []
+        hits = self._manual_fts(match, limit, allowed)
+        if not hits:
+            terms = [t for t in re.findall(r"[A-Za-z0-9]+", q) if t.lower() not in STOPWORDS]
+            if len(terms) > 1:
+                hits = self._manual_fts(fts_or_query(terms), limit, allowed)
+        return hits
+
+    def manual_semantic(self, q: str, limit: int = 10, allowed: set[str] | None = None) -> list[TalkHit]:
+        if not self._ensure_mmatrix():
+            return []
+        scores = self._mmatrix @ self.embed_query(q)
+        order = np.argsort(-scores)
+        hits: dict[str, TalkHit] = {}
+        best_chunk: dict[str, int] = {}
+        for i in order:
+            pid = str(self._mchunk_pages[i])
+            if allowed is not None and pid not in allowed:
+                continue
+            if pid not in hits:
+                hits[pid] = TalkHit(pid, float(scores[i]), [], {"semantic"})
+                best_chunk[pid] = self._mchunk_ids[i]
+                if len(hits) >= limit:
+                    break
+        if best_chunk:
+            ids = list(best_chunk.values())
+            texts = {r["id"]: r["text"] for r in self.conn.execute(
+                "SELECT id, text FROM manual_chunks WHERE id IN (SELECT value FROM json_each(?))", (json.dumps(ids),))}
+            for pid, cid in best_chunk.items():
+                t = texts.get(cid, "")
+                hits[pid].snippets.append(_trim(t.split("\n", 1)[1] if "\n" in t else t, 320))
+        return list(hits.values())
+
+    def manual_search(self, q: str, mode: str = "hybrid", limit: int = 10, manual: str | None = None,
+                      audience: str | None = None, gender: str | None = None) -> list[TalkHit]:
+        allowed = self._allowed_pages(manual, audience, gender)
+        if allowed is not None and not allowed:
+            return []
+        if mode == "keyword" or not self._ensure_mmatrix():
+            return self.manual_keyword(q, limit, allowed)
+        if mode == "semantic":
+            return self.manual_semantic(q, limit, allowed)
+        return rrf_fuse([self.manual_keyword(q, limit * 2, allowed),
+                         self.manual_semantic(q, limit * 2, allowed)], limit)
 
 
 def rrf_fuse(result_lists: list[list[TalkHit]], limit: int, k: int = 60) -> list[TalkHit]:

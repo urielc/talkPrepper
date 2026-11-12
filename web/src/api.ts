@@ -58,7 +58,75 @@ export interface TalkDetail extends TalkSummary {
   cited_by: TalkSummary[]
   prev: TalkSummary | null
   next: TalkSummary | null
-  lesson: { has_notes: boolean; pin_count: number; mine: boolean }
+  lesson: { has_notes: boolean; pin_count: number; mine: boolean; audience: AudienceKey; audience_label: string }
+}
+
+export type Audience = 'children' | 'youth' | 'adults'
+export type Gender = 'any' | 'male' | 'female'
+export type AudienceKey =
+  | 'adults-male'
+  | 'adults-female'
+  | 'adults'
+  | 'youth-male'
+  | 'youth-female'
+  | 'youth'
+  | 'children'
+
+/** Build the audience key the server stores: 'youth-female', 'children', … */
+export function audienceKey(audience: Audience, gender: Gender): AudienceKey {
+  if (audience === 'children' || gender === 'any') return audience
+  return `${audience}-${gender}` as AudienceKey
+}
+
+export const AUDIENCE_LABELS: Record<AudienceKey, string> = {
+  'adults-male': 'Elders quorum',
+  'adults-female': 'Relief Society',
+  adults: 'Adult Sunday School',
+  'youth-male': 'Aaronic Priesthood quorum',
+  'youth-female': 'Young Women class',
+  youth: 'Youth Sunday School',
+  children: 'Primary',
+}
+
+export interface SuggestedTalk extends TalkSummary {
+  calling: string
+  audience_tags: string[]
+  score: number
+  snippet: string
+}
+
+export interface ManualPageSummary {
+  uri: string
+  title: string
+  manual: string
+  manual_key: string
+  kind: string
+  audience: string[]
+  url: string
+  snippet?: string
+}
+
+export interface Suggestions {
+  topic: string
+  audience: AudienceKey
+  class: string
+  talks: SuggestedTalk[]
+  manuals: ManualPageSummary[]
+  semantic_available: boolean
+}
+
+export interface RefineResult {
+  audience: AudienceKey
+  picks: { talk_id: string; reason: string }[]
+  provider: string
+  model: string
+}
+
+export interface ManualPage extends ManualPageSummary {
+  blocks: { text: string; h: number }[]
+  prev: { uri: string; title: string } | null
+  next: { uri: string; title: string } | null
+  attribution: string
 }
 
 export interface Hit {
@@ -130,7 +198,7 @@ export interface ChatBlock {
   name?: string
   input?: Record<string, unknown>
   summary?: string
-  refs?: { type: 'talk' | 'scripture' | 'josephus'; id?: string; ref?: string; title?: string; speaker?: string }[]
+  refs?: { type: 'talk' | 'scripture' | 'josephus' | 'manual'; id?: string; ref?: string; title?: string; speaker?: string }[]
   preview?: string
   /** Server's citation checks for this block's text, keyed "kind:value". */
   citations?: Record<string, { ok: boolean; label?: string | null }>
@@ -188,6 +256,8 @@ export interface MyLesson {
   pin_count: number
   has_digest: boolean
   updated_at: string | null
+  audience: AudienceKey
+  audience_label: string
 }
 
 export class ApiError extends Error {
@@ -263,13 +333,20 @@ export const api = {
     ),
   chapter: (book: string, chapter: number) => get<Lookup>(`/scriptures/${encodeURIComponent(book)}/${chapter}`),
   josephus: (ref: string) => get<JosephusPassage>(`/josephus/lookup?ref=${encodeURIComponent(ref)}`),
+  manualPage: (uri: string) => get<ManualPage>(`/manuals/lookup?uri=${encodeURIComponent(uri)}`),
+  suggest: (topic: string, audience: Audience, gender: Gender, limit = 20) =>
+    post<Suggestions>('/suggest', { topic, audience, gender, limit }),
+  refineSuggestions: (topic: string, audience: Audience, gender: Gender, talk_ids: string[]) =>
+    post<RefineResult>('/suggest/refine', { topic, audience, gender, talk_ids }),
 
   digest: (id: string) => get<Digest | null>(`/talks/${id}/digest`),
   generateDigest: (id: string) => post<Digest>(`/talks/${id}/digest`),
   deleteDigest: (id: string) => del<{ ok: boolean }>(`/talks/${id}/digest`),
 
   myLessons: () => get<MyLesson[]>('/my-lessons'),
-  addMyLesson: (talk_id: string) => put<MyLesson[]>('/my-lessons', { talk_id }),
+  addMyLesson: (talk_id: string, audience?: AudienceKey) => put<MyLesson[]>('/my-lessons', { talk_id, audience }),
+  setLessonAudience: (talk_id: string, audience: AudienceKey) =>
+    put<{ audience: AudienceKey; audience_label: string }>(`/my-lessons/${talk_id}/audience`, { audience }),
   removeMyLesson: (talk_id: string) => del<MyLesson[]>(`/my-lessons/${talk_id}`),
   reorderMyLessons: (talk_ids: string[]) => post<MyLesson[]>('/my-lessons/reorder', { talk_ids }),
 

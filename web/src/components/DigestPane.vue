@@ -17,8 +17,8 @@ const error = ref<string | null>(null)
 const configured = ref<boolean | null>(null)
 
 watch(
-  () => props.talk.id,
-  async (id) => {
+  () => [props.talk.id, props.talk.lesson.audience] as const,
+  async ([id]) => {
     digest.value = null
     error.value = null
     loading.value = true
