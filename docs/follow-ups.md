@@ -2,6 +2,16 @@
 
 Dated status that git does not already record. Update or delete lines as they resolve.
 
+## To do
+
+1. **Lessons built on sources other than conference talks** (requested 2026-11-12, open). Let a lesson be
+   structured around a Teachings of Presidents chapter, a Gospel Topics entry, a Come, Follow Me lesson or other
+   manual page, not only a conference talk. Today every lesson is keyed by a talk id: `working_on`, `lessons`,
+   `pins`, `digests` and `chat_sessions` all use `talk_id`, the workspace route is `/talk/:conf/:slug`, and the
+   digest, Ask AI prompt (`server/ai/prompts.py`) and related-talk search assume a talk. Likely shape: a lesson
+   source of kind `talk` or `manual` (manual pages keyed by their URI), a workspace that reads either, and topic
+   search that offers manual pages as starting points beside talks.
+
 ## Topic search, class audience, Church manuals and songs (done 2026-11-12, 4616106, deployed)
 
 In production since 2026-11-12: code via CD (run 43188800632), then `manuals/manuals.json` and the manuals
