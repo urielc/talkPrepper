@@ -23,7 +23,12 @@ CLASSES: dict[str, tuple[str, str]] = {
     "youth-female": ("a Young Women class", "a Young Women class of young women aged 11 to 18"),
     "youth": ("a youth Sunday School class", "a youth Sunday School class of young men and young women aged 11 to 18"),
     "children": ("a Primary class", "a Primary class of children aged 3 to 11"),
+    "sacrament": ("a sacrament meeting talk", "a sacrament meeting congregation of all ages"),
+    "personal": ("personal study", "one person studying on their own"),
 }
+
+# Audiences that are not a class: the digest and chat prompts speak to a speaker or a student, not a teacher.
+NON_CLASS = ("sacrament", "personal")
 
 # Extra guidance for the discussion questions, by age group.
 QUESTION_STYLE = {
@@ -32,6 +37,10 @@ QUESTION_STYLE = {
              "invite them to share experiences and to act on what they learn.",
     "children": "Keep each question short and concrete, in words a child knows. Favor questions a child can "
                 "answer from their own life, and ideas for simple activities (drawing, acting out, singing).",
+    "sacrament": "Write prompts that help the speaker build a sacrament meeting talk: angles to develop, "
+                 "personal experiences worth recalling, and ways to open or close. They are not class questions.",
+    "personal": "Write reflection questions for one person studying alone: what to notice, how the idea "
+                "applies to their own life, and what to do next.",
 }
 
 
@@ -39,6 +48,8 @@ def audience_key(audience: str | None, gender: str | None = None) -> str:
     """Normalize a (audience, gender) choice to a key. Unknown input gives the default."""
     a = (audience or "").strip().lower()
     g = (gender or "").strip().lower()
+    if a in NON_CLASS or (a in CLASSES and "-" in a):
+        return a            # already a full key
     if a not in AUDIENCES:
         return DEFAULT_KEY
     if a == "children" or g not in GENDERS:
@@ -66,8 +77,17 @@ def question_style(key: str | None) -> str:
     return QUESTION_STYLE[parse_key(key)[0]]
 
 
+def is_class(key: str | None) -> bool:
+    """True when the audience is a class a teacher leads (not a sacrament talk or personal study)."""
+    return (key or DEFAULT_KEY) not in NON_CLASS
+
+
 def label(key: str | None) -> str:
     """Short UI label: 'Relief Society', 'Young Women', 'Primary', …"""
+    if key == "sacrament":
+        return "Sacrament meeting talk"
+    if key == "personal":
+        return "Other (personal study)"
     name = class_name(key)
     return re.sub(r"^an? ", "", name)
 
@@ -144,3 +164,13 @@ def talk_audience_tags(title: str, speaker: str, calling: str, body: str) -> lis
     if re.search(r"\b(?:children|Primary)\b", title):
         tags.add("children")
     return sorted(tags)
+
+
+def questions_heading(key: str | None) -> str:
+    """Heading for the generated questions: 'Questions for the quorum', 'Prompts for your talk', …"""
+    key = key or DEFAULT_KEY
+    if key == "sacrament":
+        return "Prompts for your talk"
+    if key == "personal":
+        return "Questions to ponder"
+    return "Questions for the quorum" if key in ("adults-male", "youth-male") else "Questions for the class"

@@ -33,6 +33,7 @@ got make made take took give gave see saw seen way day days time times year year
 brothers sisters brethren dear friends today tonight talk conference general president elder sister
 someone something anyone anything everyone everything nothing needed need needs fully really truly simply
 often always never ever still yet already almost quite rather perhaps maybe others another each other
+seem seems seemed seeming feel feels felt feeling become becomes became
 don't didn't doesn't won't wouldn't couldn't shouldn't can't cannot isn't aren't wasn't weren't i'm i've
 you're we're they're it's that's there's here's let's who's what's he's she's
 people person life lives world church gospel lord god jesus christ savior heavenly father spirit
@@ -54,21 +55,35 @@ class TalkHit:
                 "snippets": self.snippets[:3], "sources": sorted(self.sources)}
 
 
+def _fts_tokens(q: str) -> tuple[list[str], list[str]]:
+    """Quoted phrases and bare words of free text, each as a quoted FTS5 token."""
+    q = q.replace("“", '"').replace("”", '"')
+    phrases = ['"' + phrase.replace('"', ' ') + '"' for phrase in re.findall(r'"([^"]+)"', q)]
+    rest = re.sub(r'"[^"]+"', " ", q)
+    words = []
+    for w in re.findall(r"[A-Za-z0-9’']+", rest):
+        w = w.replace("'", "''").replace("’", "''")
+        words.append(f'"{w}"')
+    return phrases, words
+
+
 def fts_query(q: str) -> str:
     """Turn free text into a safe FTS5 MATCH expression.
 
     Quoted phrases are kept as phrases; other words become individual terms
     (implicit AND). FTS5 operators in the input are neutralised by quoting.
     """
-    q = q.replace("“", '"').replace("”", '"')
-    parts = []
-    for phrase in re.findall(r'"([^"]+)"', q):
-        parts.append('"' + phrase.replace('"', ' ') + '"')
-    rest = re.sub(r'"[^"]+"', " ", q)
-    for w in re.findall(r"[A-Za-z0-9’']+", rest):
-        w = w.replace("'", "''").replace("’", "''")
-        parts.append(f'"{w}"')
-    return " ".join(parts)
+    phrases, words = _fts_tokens(q)
+    return " ".join(phrases + words)
+
+
+def fts_loose_query(q: str) -> str:
+    """Like ``fts_query`` but forgiving: stopwords are dropped and the remaining terms are ORed, so a verse
+    matching some of them is found (rank with bm25, which favors rarer terms and more matches). Quoted phrases
+    stay phrases. A query made only of stopwords keeps its words rather than matching nothing."""
+    phrases, words = _fts_tokens(q)
+    kept = [w for w in words if w.strip('"').lower() not in STOPWORDS]
+    return " OR ".join(phrases + (kept or words))
 
 
 def fts_or_query(terms: list[str]) -> str:
@@ -329,6 +344,10 @@ class SearchEngine:
             sem = self.semantic_search_vec(v, limit * 2, None, exclude=talk_id)
         return rrf_fuse([kw, sem], limit), terms
 
+    def related_to_text(self, query: str, exclude: list[str] | None = None, limit: int = 20) -> list[TalkHit]:
+        """Talks that match free text (a study's topic and theme headings), leaving out ``exclude``."""
+        skip = set(exclude or [])
+        return [h for h in self.search(query, "hybrid", limit + len(skip)) if h.talk_id not in skip][:limit]
 
     # ------------------------------------------------------------ Josephus
     #

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { TalkDetail } from '../api'
+import type { Study, TalkDetail } from '../api'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
 import CollapsibleSection from './CollapsibleSection.vue'
@@ -10,7 +10,7 @@ import SearchSection, { type SearchOutcome } from './SearchSection.vue'
 import TalkListItem from './TalkListItem.vue'
 import { safeSnippet } from '../utils/markdown'
 
-defineProps<{ talk: TalkDetail }>()
+defineProps<{ talk?: TalkDetail; study?: Study }>()
 const ui = useUiStore()
 const lesson = useLessonStore()
 
@@ -58,11 +58,20 @@ const relatedCount = ref<number | null>(null)
     </CollapsibleSection>
 
     <CollapsibleSection title="Related talks" :count="relatedCount" storage-key="related">
-      <RelatedSection :talk-id="talk.id" @count="relatedCount = $event" />
+      <RelatedSection
+        :talk-id="talk ? talk.id : study!.key"
+        :study-id="study?.id"
+        :version="study?.updated_at"
+        @count="relatedCount = $event"
+      />
     </CollapsibleSection>
 
-    <CollapsibleSection title="Scriptures cited" :count="talk.scriptures.length" storage-key="scriptures">
-      <ScripturesSection :talk="talk" />
+    <CollapsibleSection
+      :title="study ? 'Scriptures and the talks that cite them' : 'Scriptures cited'"
+      :count="talk ? talk.scriptures.length : null"
+      storage-key="scriptures"
+    >
+      <ScripturesSection :talk="talk" :study-id="study?.id" :version="study?.updated_at" />
     </CollapsibleSection>
   </div>
 </template>

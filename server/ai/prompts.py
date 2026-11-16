@@ -29,6 +29,62 @@ Josephus is a first-century Jewish historian, not scripture and not Church doctr
 Keep answers compact and scannable: short paragraphs, bullet lists for multiple items, a one-line note on relevance for each item. Prefer the assigned talk’s own words when summarizing it."""
 
 
+def _non_class(text: str) -> str:
+    return text.replace("help the leader FIND", "help the user FIND").replace("suited to this class", "suited to them")
+
+
+def role_for(audience: str) -> str:
+    """The role text, reworded for a sacrament meeting talk or personal study (no class to lead)."""
+    if audience == "sacrament":
+        return (_non_class(ROLE).replace("for someone preparing to lead {class_name} discussion in", "for someone preparing a sacrament meeting talk in")
+                .replace(" The class is {class_members}.", " The talk will be given to a sacrament meeting congregation of all ages."))
+    if audience == "personal":
+        return (_non_class(ROLE).replace("for someone preparing to lead {class_name} discussion in", "for someone studying on their own in")
+                .replace(" The class is {class_members}.", ""))
+    return ROLE.replace("{class_name}", class_name(audience)).replace("{class_members}", class_members(audience))
+
+
+_STUDY_SWAPS = [
+    ("The lesson is built on one assigned General Conference talk, given in full below.",
+     "The lesson is a topic study built on several sources the user chose, summarized below. Fetch a source's "
+     "full text with get_talk, get_manual_page, get_scripture or get_josephus before you quote it."),
+    ("identify the talk's main message, structure, key quotations and the scriptures and talks it cites;",
+     "identify the main messages of the queued sources, their key quotations and the scriptures and talks they cite;"),
+    ("connects to the assigned talk", "connects to the topic and the queued sources"),
+    ("appears in the assigned talk or that a tool returned", "appears in a queued source or that a tool returned"),
+    ("Prefer the assigned talk’s own words when summarizing it.", "Prefer the sources' own words when summarizing them."),
+]
+
+_KIND_NAME = {"talk": "talk", "manual": "manual page", "song": "hymn or song", "scripture": "scripture passage",
+              "apocrypha": "Apocrypha passage", "josephus": "Josephus"}
+_CITE = {"talk": "[[talk:{ref}]]", "manual": "[[manual:{ref}]]", "song": "[[manual:{ref}]]",
+         "scripture": "[[scripture:{ref}]]", "apocrypha": "[[scripture:{ref}]]", "josephus": "[[josephus:{ref}]]"}
+
+
+def build_study_system(study: dict, audience: str = DEFAULT_KEY) -> str:
+    """System prompt for a topic study: topic, audience, modifier, the summary and the source list with refs."""
+    role = role_for(audience)
+    for old, new in _STUDY_SWAPS:
+        role = role.replace(old, new)
+    lines = [f"TOPIC STUDY\nTopic: {study['topic']}"]
+    if study.get("modifier"):
+        lines.append(f"The user's instructions for the summary: {study['modifier']}")
+    lines.append("\nQUEUED SOURCES (cite with the form shown):")
+    for i, s in enumerate(study["sources"], 1):
+        lines.append(f"S{i}. {_KIND_NAME.get(s['kind'], s['kind'])}: {s['title']} {_CITE[s['kind']].format(ref=s['ref'])}")
+    summary = study.get("summary")
+    if summary:
+        lines.append("\nSUMMARY (written for the user from the full sources)")
+        lines.append(f"Overview: {summary.get('overview', '')}")
+        for t in summary.get("themes", []):
+            lines.append(f"- {t.get('heading', '')}: {t.get('body', '')} ({', '.join(t.get('sources', []))})")
+        if summary.get("scriptures"):
+            lines.append("Scriptures: " + ", ".join(summary["scriptures"]))
+    else:
+        lines.append("\nNo summary has been generated yet. Read the sources with the tools as needed.")
+    return f"{role}\n\n" + "\n".join(lines) + "\n"
+
+
 def build_system(talk: dict, paragraphs: list[dict], audience: str = DEFAULT_KEY) -> str:
     body = "\n\n".join((f"¶{p['num']} " if p.get("num") else "") + p["text"]
                        for p in paragraphs if not p.get("is_note"))
@@ -40,7 +96,7 @@ def build_system(talk: dict, paragraphs: list[dict], audience: str = DEFAULT_KEY
         f"Conference: {talk.get('conference') or talk.get('conference_id')}\nTalk id: {talk['id']}\n"
         f"Scriptures cited: {scriptures}\n"
     )
-    role = ROLE.replace("{class_name}", class_name(audience)).replace("{class_members}", class_members(audience))
+    role = role_for(audience)
     key = "Paragraphs are marked ¶N; class members refer to paragraphs by these numbers.\n" if numbered else ""
     text = f"{role}\n\n{header}\n--- TALK TEXT ---\n{key}{body}\n"
     if notes:

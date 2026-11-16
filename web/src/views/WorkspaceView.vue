@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, AUDIENCE_LABELS, type AudienceKey, type TalkDetail } from '../api'
+import { api, AUDIENCE_LABELS, type AudienceKey, type Study, type TalkDetail } from '../api'
 import { talkRoute } from '../router'
 import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
@@ -11,24 +11,41 @@ import NotesColumn from '../components/NotesColumn.vue'
 import ResearchColumn from '../components/ResearchColumn.vue'
 import TalkReader from '../components/TalkReader.vue'
 import DigestPane from '../components/DigestPane.vue'
+import AudienceSelect from '../components/AudienceSelect.vue'
+import PonderPane from '../components/PonderPane.vue'
+import StudySummary from '../components/StudySummary.vue'
 
-const props = defineProps<{ talkId: string }>()
+// The workspace shows one lesson: a conference talk (talkId) or a topic study (studyId). Both share the left
+// research column, the notes and pins column and Ask AI, keyed by the lesson key; only the center and the
+// bottom pane differ.
+const props = defineProps<{ talkId?: string; studyId?: number }>()
 const lesson = useLessonStore()
 const ui = useUiStore()
 
 const talk = ref<TalkDetail | null>(null)
+const study = ref<Study | null>(null)
 const error = ref<string | null>(null)
 const draft = ref('')
 
+/** The lesson key notes, pins and chat are stored under: a talk id or study:<id>. */
+const lessonKey = computed(() => (props.studyId ? `study:${props.studyId}` : props.talkId || ''))
+
 watch(
-  () => props.talkId,
-  async (id) => {
+  () => [props.talkId, props.studyId] as const,
+  async ([id, sid]) => {
     talk.value = null
+    study.value = null
     error.value = null
     try {
-      const [t] = await Promise.all([api.talk(id), lesson.load(id)])
-      talk.value = t
-      document.title = `${t.title} · Lesson Prep`
+      if (sid) {
+        const [s] = await Promise.all([api.study(sid), lesson.load(`study:${sid}`)])
+        study.value = s
+        document.title = `${s.topic} · Lesson Prep`
+      } else if (id) {
+        const [t] = await Promise.all([api.talk(id), lesson.load(id)])
+        talk.value = t
+        document.title = `${t.title} · Lesson Prep`
+      }
     } catch (e: any) {
       error.value = e.message
     }
@@ -37,14 +54,18 @@ watch(
 )
 
 // Who the lesson is for: the digest's questions and Ask AI are written for this class.
-const audienceOptions = Object.entries(AUDIENCE_LABELS) as [AudienceKey, string][]
 async function setAudience(key: AudienceKey) {
-  if (!talk.value) return
   try {
-    const r = await api.setLessonAudience(talk.value.id, key)
-    talk.value.lesson = { ...talk.value.lesson, audience: r.audience, audience_label: r.audience_label, mine: true }
+    const r = await api.setLessonAudience(lessonKey.value, key)
+    if (talk.value) talk.value.lesson = { ...talk.value.lesson, audience: r.audience, audience_label: r.audience_label, mine: true }
+    if (study.value) {
+      study.value = { ...study.value, audience: r.audience, audience_label: r.audience_label }
+      if (study.value.summary) ui.toast(`Set for ${AUDIENCE_LABELS[key]}. Regenerate the summary to rewrite it for them.`, 'ok', 4000)
+      else ui.toast(`Lesson set for ${AUDIENCE_LABELS[key]}`, 'ok', 1800)
+    } else {
+      ui.toast(`Lesson set for ${AUDIENCE_LABELS[key]}`, 'ok', 1800)
+    }
     await lesson.loadMine()
-    ui.toast(`Lesson set for ${AUDIENCE_LABELS[key]}`, 'ok', 1800)
   } catch (e: any) {
     ui.toast(e.message || 'Could not change the class', 'error')
   }
@@ -102,14 +123,21 @@ onBeforeUnmount(endDrag)
 
 <template>
   <div v-if="error" class="notice error" style="margin: 1.5rem">{{ error }} <RouterLink to="/">Choose another talk</RouterLink></div>
-  <div v-else-if="!talk" class="muted" style="margin: 1.5rem">Loading talk…</div>
+  <div v-else-if="!talk && !study" class="muted" style="margin: 1.5rem">Loading…</div>
   <div v-else class="workspace">
     <aside class="research-col">
-      <ResearchColumn :talk="talk" />
+      <ResearchColumn :talk="talk ?? undefined" :study="study ?? undefined" />
     </aside>
 
     <section ref="readerCol" class="reader-col" :style="{ '--reader-frac': readerFrac }">
       <div class="reader-pane">
+      <StudySummary
+        v-if="study"
+        :study="study"
+        @updated="study = $event"
+        @audience="setAudience"
+      />
+      <template v-else-if="talk">
       <header class="talk-head">
         <nav class="crumbs small">
           <RouterLink to="/">Talks</RouterLink> / <span class="muted">{{ talk.conference }}</span>
@@ -125,17 +153,7 @@ onBeforeUnmount(endDrag)
             In my lessons ✓
           </button>
           <button v-else class="small" @click="lesson.addMine(talk.id)">Add to my lessons</button>
-          <label class="class-pick small">
-            <span class="muted">Class</span>
-            <select
-              :value="talk.lesson.audience"
-              aria-label="Who this lesson is for"
-              title="The digest's questions and Ask AI are written for this class"
-              @change="setAudience(($event.target as HTMLSelectElement).value as AudienceKey)"
-            >
-              <option v-for="[k, l] in audienceOptions" :key="k" :value="k">{{ l }}</option>
-            </select>
-          </label>
+          <AudienceSelect :model-value="talk.lesson.audience" @change="setAudience" />
         </div>
         <div class="row between neighbors small">
           <RouterLink v-if="talk.prev" :to="talkRoute(talk.prev.id)" class="muted">‹ {{ talk.prev.title }}</RouterLink>
@@ -144,22 +162,24 @@ onBeforeUnmount(endDrag)
         </div>
       </header>
       <TalkReader :talk="talk" :scroll-to="scrollTo" @ask="ask" />
+      </template>
       </div>
 
       <div class="splitter" role="separator" aria-orientation="horizontal" aria-label="Resize talk and digest"
            @pointerdown="startDrag" @pointermove="onDrag" @pointerup="endDrag" @pointercancel="endDrag"></div>
 
       <div class="digest-pane">
-        <DigestPane :talk="talk" @goto="goto" @ask="askRaw" />
+        <PonderPane v-if="study" :study="study" @ask="askRaw" />
+        <DigestPane v-else-if="talk" :talk="talk" @goto="goto" @ask="askRaw" />
       </div>
     </section>
 
     <aside class="notes-col">
-      <NotesColumn :talk-id="talk.id" />
+      <NotesColumn :talk-id="lessonKey" />
     </aside>
 
     <AskAiButton />
-    <AiSidebar :talk-id="talk.id" :draft="draft" />
+    <AiSidebar :talk-id="lessonKey" :draft="draft" />
   </div>
 </template>
 
@@ -254,16 +274,6 @@ h1 {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-}
-.class-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.class-pick select {
-  width: auto;
-  padding-top: 0.2rem;
-  padding-bottom: 0.2rem;
 }
 .neighbors {
   margin-top: 1rem;

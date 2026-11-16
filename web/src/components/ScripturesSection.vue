@@ -5,7 +5,9 @@ import { useLessonStore } from '../stores/lesson'
 import { useUiStore } from '../stores/ui'
 import TalkListItem from './TalkListItem.vue'
 
-const props = defineProps<{ talk: TalkDetail }>()
+/** A talk shows the passages it cites; a study (studyId) shows the passages its sources and summary draw on.
+ *  version refetches when the study's summary changes. */
+const props = defineProps<{ talk?: TalkDetail; studyId?: number; version?: string }>()
 const ui = useUiStore()
 const lesson = useLessonStore()
 
@@ -14,12 +16,13 @@ const open = ref<Set<string>>(new Set())
 const loading = ref(false)
 
 watch(
-  () => props.talk.id,
-  async (id) => {
+  () => [props.talk?.id, props.studyId, props.version],
+  async () => {
     loading.value = true
     open.value = new Set()
     try {
-      shared.value = await api.sharedScriptures(id)
+      if (props.studyId) shared.value = await api.studyScriptures(props.studyId)
+      else if (props.talk) shared.value = await api.sharedScriptures(props.talk.id)
     } finally {
       loading.value = false
     }
@@ -36,9 +39,11 @@ function toggle(r: string) {
 
 <template>
   <div>
-    <p v-if="!talk.scriptures.length" class="empty">No scripture references were detected in this talk.</p>
+    <p v-if="studyId ? !shared.length && !loading : !talk?.scriptures.length" class="empty">
+      {{ studyId ? 'No scripture passages yet. They appear when sources or the summary cite some.' : 'No scripture references were detected in this talk.' }}
+    </p>
     <template v-else>
-      <p class="muted small">Click a reference to read it; expand to see other talks that cite it.</p>
+      <p class="muted small">Click a reference to read it; expand to see {{ studyId ? 'talks that cite it' : 'other talks that cite it' }}.</p>
       <ul class="result-list">
         <li v-for="s in shared" :key="s.ref">
           <div class="row between">
@@ -48,7 +53,7 @@ function toggle(r: string) {
                 {{ lesson.hasPin('scripture', s.ref) ? 'Pinned' : 'Pin' }}
               </button>
               <button class="quiet small" @click="toggle(s.ref)">
-                {{ s.count }} other {{ s.count === 1 ? 'talk' : 'talks' }} {{ open.has(s.ref) ? '▴' : '▾' }}
+                {{ s.count }} {{ studyId ? '' : 'other ' }}{{ s.count === 1 ? 'talk' : 'talks' }} {{ open.has(s.ref) ? '▴' : '▾' }}
               </button>
             </div>
           </div>
@@ -63,7 +68,7 @@ function toggle(r: string) {
       <div v-if="loading && !shared.length" class="muted">Loading…</div>
     </template>
 
-    <section v-if="talk.cites.length || talk.cited_by.length" class="cites">
+    <section v-if="talk && (talk.cites.length || talk.cited_by.length)" class="cites">
       <h3>Talk citations</h3>
       <template v-if="talk.cites.length">
         <p class="muted small">This talk cites</p>

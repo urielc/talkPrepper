@@ -4,13 +4,17 @@ Dated status that git does not already record. Update or delete lines as they re
 
 ## To do
 
-1. **Lessons built on sources other than conference talks** (requested 2026-11-12, open). Let a lesson be
-   structured around a Teachings of Presidents chapter, a Gospel Topics entry, a Come, Follow Me lesson or other
-   manual page, not only a conference talk. Today every lesson is keyed by a talk id: `working_on`, `lessons`,
-   `pins`, `digests` and `chat_sessions` all use `talk_id`, the workspace route is `/talk/:conf/:slug`, and the
-   digest, Ask AI prompt (`server/ai/prompts.py`) and related-talk search assume a talk. Likely shape: a lesson
-   source of kind `talk` or `manual` (manual pages keyed by their URI), a workspace that reads either, and topic
-   search that offers manual pages as starting points beside talks.
+1. **Topic studies: end-to-end check and deploy** (built 2026-11-15, not committed). Lessons built on any set of
+   sources (talks, manual pages, songs, scripture passages, Josephus, Apocrypha), replacing the old "By topic" tab;
+   this also closes the 2026-11-12 request for lessons built on manual pages. Done in code and tests (170 pass,
+   web build clean). Still to do: a full pass in the browser (Sacrament audience, preview and queue five mixed
+   sources, modifier, summarize, check the workspace panels, pin a quote and a question, Ask AI, print, phone
+   width), then commit, push (CD deploys) and watch the Deploy run. `studies` is created at startup; no data copy.
+   Design: the study is a lesson with the key `study:<id>` in `working_on`, `lessons`, `pins` and `chat_sessions`
+   (`server/studies.py`); the workspace swaps only its center and bottom panels (`StudySummary.vue`,
+   `PonderPane.vue`). Known gaps: related talks for a study show no shared-scripture counts; the summary does not
+   regenerate when the class changes (a toast says so); sources are removed or added by "Edit sources", which loads
+   the queue back into the topic page.
 
 ## Topic search, class audience, Church manuals and songs (done 2026-11-12, 4616106, deployed)
 

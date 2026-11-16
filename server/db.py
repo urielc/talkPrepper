@@ -247,6 +247,23 @@ CREATE TABLE IF NOT EXISTS lessons (
     PRIMARY KEY (user_id, talk_id)
 );
 
+-- A topic study: a lesson built on a queue of sources instead of one talk. Its lesson key in working_on,
+-- lessons, pins and chat_sessions is 'study:<id>' (server/studies.py).
+CREATE TABLE IF NOT EXISTS studies (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    topic        TEXT NOT NULL,
+    audience     TEXT NOT NULL DEFAULT 'adults-male',   -- audience key (server/audience.py)
+    modifier     TEXT NOT NULL DEFAULT '',              -- optional extra instructions for the summary
+    sources_json TEXT NOT NULL DEFAULT '[]',            -- [{kind, ref, title}], in order
+    summary_json TEXT,                                  -- NULL until generated
+    provider     TEXT NOT NULL DEFAULT '',
+    model        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS studies_user ON studies(user_id);
+
 CREATE TABLE IF NOT EXISTS pins (
     id               INTEGER PRIMARY KEY,
     user_id          INTEGER,

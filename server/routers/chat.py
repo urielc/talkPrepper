@@ -12,9 +12,10 @@ from pydantic import BaseModel, Field
 
 from ..ai import get_provider
 from ..ai.base import ChatEvent, ProviderError
-from ..ai.prompts import build_system
+from ..ai.prompts import build_study_system, build_system
 from ..ai.tools import TOOLS, ToolContext
 from ..cite_check import CitationChecker, StreamScanner, scan
+from .. import studies as st
 from ..deps import get_conn, get_engine, get_user
 from ..log import security
 from ..settings import get_settings
@@ -64,8 +65,15 @@ def chat(body: ChatBody, request: Request, conn=Depends(get_conn), engine=Depend
         provider = get_provider(settings)
     except ProviderError as e:
         raise HTTPException(400, str(e))
-    talk = talk_detail(body.talk_id, conn, user)  # 404s if missing
-    system = build_system(talk, talk["paragraphs"], lesson_audience(conn, uid, body.talk_id))
+    sid = st.study_id_of(body.talk_id)
+    if sid is not None:
+        study = st.get_study_or_404(conn, uid, sid)
+        system = build_study_system(study, study["audience"])
+    elif st.is_study_key(body.talk_id):
+        raise HTTPException(404, "study not found")
+    else:
+        talk = talk_detail(body.talk_id, conn, user)  # 404s if missing
+        system = build_system(talk, talk["paragraphs"], lesson_audience(conn, uid, body.talk_id))
 
     if body.session_id:
         row = conn.execute("SELECT id FROM chat_sessions WHERE id=? AND talk_id=? AND user_id=?",

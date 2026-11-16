@@ -16,6 +16,12 @@ export const router = createRouter({
       component: () => import('./views/WorkspaceView.vue'),
       props: (r) => ({ talkId: `${r.params.conf}/${r.params.slug}` }),
     },
+    {
+      path: '/study/:id(\\d+)',
+      name: 'study',
+      component: () => import('./views/WorkspaceView.vue'),
+      props: (r) => ({ studyId: Number(r.params.id) }),
+    },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
@@ -38,4 +44,13 @@ router.beforeEach(async (to) => {
 export function talkRoute(talkId: string) {
   const [conf, slug] = talkId.split('/')
   return { name: 'talk', params: { conf, slug } }
+}
+
+export function studyRoute(studyId: number) {
+  return { name: 'study', params: { id: String(studyId) } }
+}
+
+/** The route for a lesson in "my lessons": a talk or a topic study. */
+export function lessonRoute(m: { kind: 'talk' | 'study'; lesson_id: string }) {
+  return m.kind === 'study' ? studyRoute(Number(m.lesson_id.replace('study:', ''))) : talkRoute(m.lesson_id)
 }

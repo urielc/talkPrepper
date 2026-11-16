@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from .. import studies as st
+from ..audience import label as audience_label, questions_heading
 from ..auth import rate_limit
 from ..deps import get_conn, get_user
 from ..log import event, security
@@ -19,7 +21,7 @@ from ..mailer import send_html, MailConfigError, email_ready, missing_email_setu
 from ..scriptures import get_verses, format_ref
 from ..settings import get_settings
 from .scriptures import parse_single_ref
-from .talks import fetch_talks, get_talk_or_404, talk_row_to_dict
+from .talks import fetch_talks, get_talk_or_404, lesson_audience, talk_row_to_dict
 
 router = APIRouter(tags=["lessons"])
 
@@ -99,12 +101,13 @@ def export_html(talk_id: str, sections: str | None = None, conn=Depends(get_conn
 
 @router.post("/lessons/{talk_id:path}/email")
 def email_lesson(talk_id: str, body: EmailBody, conn=Depends(get_conn), user=Depends(get_user)):
-    talk = talk_row_to_dict(get_talk_or_404(conn, talk_id))
+    subject_line = lesson_subject(conn, user["id"], talk_id)
     settings = get_settings(conn)
     if not email_ready(settings):
         raise HTTPException(400, "Email is not configured. " + missing_email_setup(settings))
     rate_limit(f"email:{user['id']}", limit=10, window_s=3600)
-    subject = body.subject or f"Lesson prep: {talk['title']} ({talk['speaker']})"
+    subject = body.subject or f"Lesson prep: {subject_line['title']}" + (
+        f" ({subject_line['speaker']})" if subject_line["speaker"] else "")
     try:
         info = send_html(settings, body.to, subject, render_export(conn, user["id"], talk_id))
     except MailConfigError as e:
@@ -158,7 +161,7 @@ def delete_pin(talk_id: str, pin_id: int, conn=Depends(get_conn), user=Depends(g
 @router.post("/lessons/{talk_id:path}/pins")
 def add_pin(talk_id: str, body: PinBody, conn=Depends(get_conn), user=Depends(get_user)):
     uid = user["id"]
-    get_talk_or_404(conn, talk_id)
+    st.require_subject(conn, uid, talk_id)
     ensure_lesson(conn, uid, talk_id)
     text = body.text
     if body.kind == "scripture":
@@ -208,7 +211,7 @@ def get_lesson(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
 @router.put("/lessons/{talk_id:path}")
 def put_notes(talk_id: str, body: NotesBody, conn=Depends(get_conn), user=Depends(get_user)):
     uid = user["id"]
-    get_talk_or_404(conn, talk_id)
+    st.require_subject(conn, uid, talk_id)
     ensure_lesson(conn, uid, talk_id)
     conn.execute("UPDATE lessons SET notes_md=?, updated_at=datetime('now'), "
                  "hidden_at=CASE WHEN TRIM(?, ' ' || char(9, 10, 13)) = '' THEN hidden_at END WHERE user_id=? AND talk_id=?",
@@ -260,7 +263,7 @@ SECTION_TITLES = {"essence": "Essence", "points": "Main points", "quotes": "Wort
 KIND_LABEL = {"opening": "Opening", "discussion": "Discussion", "application": "Application"}
 
 
-def render_digest_sections(digest: dict | None, chosen: list[str]) -> str:
+def render_digest_sections(digest: dict | None, chosen: list[str], audience: str | None = None) -> str:
     esc = html.escape
     wanted = [k for k in ("essence", "points", "quotes", "questions") if k in chosen]
     if not wanted:
@@ -288,16 +291,81 @@ def render_digest_sections(digest: dict | None, chosen: list[str]) -> str:
             blocks.append(f"<div class='qkind'>{KIND_LABEL[kind]}</div>" + "".join(
                 f"<div class='q'><p class='qtext'>{esc(q.get('question', ''))}</p>"
                 f"<div class='qnote'>{esc(q.get('note', ''))}</div></div>" for q in qs))
-        out.append("<h2>Questions for the quorum</h2>" + "".join(blocks))
+        out.append(f"<h2>{esc(questions_heading(audience))}</h2>" + "".join(blocks))
+    return "".join(out)
+
+
+esc_ = html.escape
+
+
+def lesson_subject(conn: sqlite3.Connection, uid: int, lesson_key: str) -> dict:
+    """What a lesson is about, for its heading: title, a byline and a link. Talks and owned studies only."""
+    sid = st.study_id_of(lesson_key)
+    if sid is None:
+        talk = talk_row_to_dict(get_talk_or_404(conn, lesson_key))
+        return {"title": talk["title"], "speaker": talk["speaker"], "url": talk["url"],
+                "meta": f"{esc_(talk['speaker'])} · {esc_(talk['conference'] or '')} · "
+                        f"<a href=\"{esc_(talk['url'])}\">Read the talk</a>"}
+    study = st.get_study_or_404(conn, uid, sid)
+    return {"title": study["topic"], "speaker": "", "url": "",
+            "meta": f"Topic study for {esc_(audience_label(study['audience']))} · {len(study['sources'])} sources"}
+
+
+def render_study_sections(study: dict, chosen: list[str]) -> str:
+    """The study summary in the sections a printed lesson sheet uses (essence, points, quotes, questions)."""
+    esc = html.escape
+    wanted = [k for k in ("essence", "points", "quotes", "questions") if k in chosen]
+    if not wanted:
+        return ""
+    summary = study["summary"]
+    if not summary:
+        return "<h2>Summary</h2><p><em>No summary has been generated for this study yet.</em></p>"
+    labels = {x["label"]: x["title"] for x in summary.get("source_labels", [])}
+    out = []
+    if "essence" in wanted:
+        out.append(f"<h2>Overview</h2><p class='essence'>{esc(summary.get('overview', ''))}</p>")
+    if "points" in wanted:
+        items = "".join(
+            f"<li><strong>{esc(t.get('heading', ''))}</strong> {esc(t.get('body', ''))}"
+            + (f" <span class='qnote'>({esc('; '.join(labels.get(s, s) for s in t.get('sources', [])))})</span>"
+               if t.get("sources") else "") + "</li>" for t in summary.get("themes", []))
+        out.append(f"<h2>Themes</h2><ol class='points'>{items}</ol>")
+    if "quotes" in wanted:
+        qs = "".join(
+            f"<div class='quote'><blockquote>“{esc(q.get('text', ''))}”</blockquote>"
+            f"<div class='why'>{esc(labels.get(q.get('source', ''), ''))}. {esc(q.get('why', ''))}</div></div>"
+            for q in summary.get("key_quotes", []))
+        out.append(f"<h2>Worth reading aloud</h2>{qs}")
+    if "questions" in wanted:
+        blocks = []
+        for kind in ("opening", "discussion", "application"):
+            qs = [q for q in summary.get("ponder", []) if q.get("kind", "discussion") == kind]
+            if qs:
+                blocks.append(f"<div class='qkind'>{KIND_LABEL[kind]}</div>" + "".join(
+                    f"<div class='q'><p class='qtext'>{esc(q.get('question', ''))}</p>"
+                    f"<div class='qnote'>{esc(q.get('note', ''))}</div></div>" for q in qs))
+        out.append(f"<h2>{esc(questions_heading(study['audience']))}</h2>" + "".join(blocks))
+        if summary.get("further"):
+            items = "".join(f"<li>{esc(f.get('title', ''))} <span class='qnote'>{esc(f.get('why', ''))}</span></li>"
+                            for f in summary["further"])
+            out.append(f"<h2>Further material</h2><ul class='points'>{items}</ul>")
+    sources = "".join(f"<li>{esc(x['title'])}</li>" for x in summary.get("source_labels", []))
+    if sources:
+        out.append(f"<h2>Sources</h2><ol class='points'>{sources}</ol>")
     return "".join(out)
 
 
 def render_export(conn: sqlite3.Connection, uid: int, talk_id: str, sections: list[str] | None = None) -> str:
     from ..ai.digest import load_digest
     chosen = [x for x in (sections or ALL_SECTIONS) if x in ALL_SECTIONS] or ALL_SECTIONS
-    talk = talk_row_to_dict(get_talk_or_404(conn, talk_id))
+    subject = lesson_subject(conn, uid, talk_id)
     lesson = lesson_for(conn, uid, talk_id)
-    digest_html = render_digest_sections(load_digest(conn, talk_id), chosen)
+    audience = lesson_audience(conn, uid, talk_id)
+    sid = st.study_id_of(talk_id)
+    if sid is not None:
+        digest_html = render_study_sections(st.get_study_or_404(conn, uid, sid), chosen)
+    else:
+        digest_html = render_digest_sections(load_digest(conn, talk_id, audience), chosen, audience)
     esc = html.escape
     notes_html = nh3.clean(markdown.markdown(lesson["notes_md"] or "", extensions=["extra", "sane_lists"])) \
         if lesson["notes_md"] else "<p><em>No notes yet.</em></p>"
@@ -321,10 +389,10 @@ def render_export(conn: sqlite3.Connection, uid: int, talk_id: str, sections: li
                    f"<a href='{esc(t.get('url', ''))}'>{esc(t.get('title', ''))}</a></div>") if t else ""
         note = f"<div class='note'>{esc(p['note'])}</div>" if p["note"] else ""
         pins_html.append(f"<div class='pin'>{head}{body}{src}{note}</div>")
-    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Lesson prep: {esc(talk['title'])}</title>
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Lesson prep: {esc(subject['title'])}</title>
 <style>{EXPORT_CSS}</style></head><body>
-<h1>{esc(talk['title'])}</h1>
-<div class="meta">{esc(talk['speaker'])} · {esc(talk['conference'] or '')} · <a href="{esc(talk['url'])}">Read the talk</a></div>
+<h1>{esc(subject['title'])}</h1>
+<div class="meta">{subject['meta']}</div>
 {f'<h2>Notes</h2><div class="notes">{notes_html}</div>' if 'notes' in chosen else ''}
 {digest_html}
 {f"<h2>Pinned references ({len(pins_html)})</h2>{''.join(pins_html) or '<p><em>Nothing pinned yet.</em></p>'}" if 'pins' in chosen else ''}

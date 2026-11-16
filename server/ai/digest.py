@@ -11,7 +11,7 @@ import sqlite3
 
 from . import get_provider
 from .base import ProviderError
-from ..audience import DEFAULT_KEY, class_members, class_name, question_style
+from ..audience import DEFAULT_KEY, class_members, class_name, is_class, question_style
 from ..settings import get_settings
 
 DIGEST_SCHEMA = {
@@ -76,7 +76,28 @@ Guidelines:
 """
 
 
+SYSTEM_SACRAMENT = SYSTEM.replace("for someone who will lead {class_name} discussion on it",
+                                  "for someone preparing a sacrament meeting talk").replace(
+    "questions for {class_members}. Mix kinds: \"opening\" (draws people in, no wrong answers), \"discussion\" (probes the talk's ideas, invites disagreement or nuance), \"application\" (connects the teaching to their own lives).",
+    "prompts that help the speaker build their own talk. Mix kinds: \"opening\" (ways to begin), \"discussion\" (angles and ideas to develop), \"application\" (personal experiences and invitations to close with).").replace(
+    "plus questions that will get a class talking about it", "plus prompts for a speaker preparing their own talk").replace(
+    "that a teacher would want to read aloud", "that a speaker would want to quote").replace(
+    "short teacher note", "short note for the speaker").replace(
+    "Avoid yes/no questions and avoid questions whose answer", "Avoid yes/no prompts and avoid prompts whose answer")
+
+SYSTEM_PERSONAL = SYSTEM.replace("for someone who will lead {class_name} discussion on it",
+                                 "for someone studying it on their own").replace(
+    "questions for {class_members}. Mix kinds: \"opening\" (draws people in, no wrong answers), \"discussion\" (probes the talk's ideas, invites disagreement or nuance), \"application\" (connects the teaching to their own lives).",
+    "reflection questions for one person. Mix kinds: \"opening\" (a first thought to sit with), \"discussion\" (probes the talk's ideas), \"application\" (connects the teaching to their own life and next steps).").replace(
+    "plus questions that will get a class talking about it", "plus questions for personal reflection").replace(
+    "that a teacher would want to read aloud", "worth reading again").replace(
+    "short teacher note", "short note for the student")
+
+
 def system_prompt(audience: str = DEFAULT_KEY) -> str:
+    if not is_class(audience):
+        base = SYSTEM_SACRAMENT if audience == "sacrament" else SYSTEM_PERSONAL
+        return base.format(class_name="", class_members="", question_style=question_style(audience))
     return SYSTEM.format(class_name=class_name(audience), class_members=class_members(audience),
                          question_style=question_style(audience))
 

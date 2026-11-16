@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, type Digest, type TalkDetail } from '../api'
+import { api, audienceWho, questionsHeading, type Digest, type TalkDetail } from '../api'
 import { useLessonStore } from '../stores/lesson'
 import { useAuthStore } from '../stores/auth'
 
@@ -64,7 +64,14 @@ function pinQuestion(q: Digest['questions'][number]) {
 }
 
 function askAbout(q: Digest['questions'][number]) {
-  emit('ask', `Help me prepare to lead a discussion on this question from the talk:\n\n“${q.question}”\n\nWhat in the talk, the scriptures it cites, or other conference talks would help the quorum think about it?`)
+  const key = props.talk.lesson.audience
+  const who = audienceWho(key)
+  if (key === 'sacrament')
+    emit('ask', `Help me use this prompt in my sacrament meeting talk:\n\n“${q.question}”\n\nWhat in the talk, the scriptures it cites, or other conference talks would help me develop it?`)
+  else if (key === 'personal')
+    emit('ask', `Help me think through this question from the talk:\n\n“${q.question}”\n\nWhat in the talk, the scriptures it cites, or other conference talks would help me?`)
+  else
+    emit('ask', `Help me prepare to lead a discussion on this question from the talk:\n\n“${q.question}”\n\nWhat in the talk, the scriptures it cites, or other conference talks would help ${who} think about it?`)
 }
 
 const kindLabel: Record<string, string> = { opening: 'Opening', discussion: 'Discussion', application: 'Application' }
@@ -83,7 +90,7 @@ const grouped = computed(() => {
       <h3>Essence of the talk</h3>
       <p class="muted">
         Generate a reader's digest: the central message, the main observations, quotations worth reading aloud, and
-        discussion questions for the quorum. It is created once and kept with the talk.
+        {{ audienceWho(talk.lesson.audience) ? `discussion questions for ${audienceWho(talk.lesson.audience)}` : talk.lesson.audience === 'sacrament' ? 'prompts for your talk' : 'questions to ponder' }}. It is created once and kept with the talk.
       </p>
       <div v-if="configured === false" class="notice">
         <template v-if="auth.user?.is_admin">
@@ -127,7 +134,7 @@ const grouped = computed(() => {
         </section>
 
         <section class="col">
-          <h3>Questions for the quorum</h3>
+          <h3>{{ questionsHeading(talk.lesson.audience) }}</h3>
           <template v-for="kind in ['opening', 'discussion', 'application']" :key="kind">
             <div v-if="grouped[kind].length" class="qgroup">
               <div class="qkind small">{{ kindLabel[kind] }}</div>

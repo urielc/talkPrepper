@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { SourceKind } from '../api'
 
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -76,6 +77,14 @@ export const useUiStore = defineStore('ui', () => {
     manualUri.value = null
   }
 
+  /** Open a study source (talk, manual page, song, passage, Josephus) in its own panel. */
+  function openSource(kind: SourceKind, ref: string) {
+    if (kind === 'talk') openTalk(ref)
+    else if (kind === 'manual' || kind === 'song') openManual(ref)
+    else if (kind === 'josephus') openJosephus(ref)
+    else openScripture(ref)
+  }
+
   // Ask AI sidebar
   const aiOpen = ref(false)
   function openAi() {
@@ -113,6 +122,7 @@ export const useUiStore = defineStore('ui', () => {
     manualUri,
     openManual,
     closeManual,
+    openSource,
     aiOpen,
     openAi,
     closeAi,

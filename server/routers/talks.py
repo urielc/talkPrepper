@@ -8,6 +8,7 @@ import sqlite3
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .. import studies as st
 from ..audience import CLASSES, DEFAULT_KEY, label as audience_label
 from ..deps import get_conn, get_engine, get_user
 from ..search import SearchEngine, fts_query
@@ -65,6 +66,9 @@ class AudienceBody(BaseModel):
 
 def lesson_audience(conn: sqlite3.Connection, uid: int, talk_id: str) -> str:
     """The audience key this user set for a talk's lesson (elders quorum when unset)."""
+    owned = st.study_audience(conn, uid, talk_id)       # a study keeps its audience on its own row
+    if owned is not None:
+        return owned
     row = conn.execute("SELECT audience FROM working_on WHERE user_id=? AND talk_id=?", (uid, talk_id)).fetchone()
     return row["audience"] if row and row["audience"] in CLASSES else DEFAULT_KEY
 
@@ -74,6 +78,9 @@ class ReorderMine(BaseModel):
 
 
 def my_lessons(conn: sqlite3.Connection, uid: int) -> list[dict]:
+    """The lessons this user is working on: talks (``kind`` 'talk') and topic studies (``kind`` 'study').
+
+    ``lesson_id`` is the lesson key (a talk id or ``study:<id>``); ``talk`` is set for talks, ``study`` for studies."""
     rows = conn.execute(
         "SELECT w.talk_id, w.added_at, w.ord, w.audience, "
         "COALESCE((SELECT LENGTH(notes_md) FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id), 0) AS notes_len, "
@@ -81,12 +88,29 @@ def my_lessons(conn: sqlite3.Connection, uid: int) -> list[dict]:
         "EXISTS(SELECT 1 FROM digests d WHERE d.talk_id=w.talk_id AND d.audience=COALESCE(w.audience, 'adults-male')) AS has_digest, "
         "(SELECT updated_at FROM lessons l WHERE l.user_id=w.user_id AND l.talk_id=w.talk_id) AS updated_at "
         "FROM working_on w WHERE w.user_id=? ORDER BY w.ord, w.added_at", (uid,)).fetchall()
-    talks = fetch_talks(conn, [r["talk_id"] for r in rows])
-    return [{"talk": talks[r["talk_id"]], "added_at": r["added_at"], "notes_len": r["notes_len"],
-             "pin_count": r["pin_count"], "has_digest": bool(r["has_digest"]), "updated_at": r["updated_at"],
-             "audience": r["audience"] if r["audience"] in CLASSES else DEFAULT_KEY,
-             "audience_label": audience_label(r["audience"] if r["audience"] in CLASSES else DEFAULT_KEY)}
-            for r in rows if r["talk_id"] in talks]
+    talks = fetch_talks(conn, [r["talk_id"] for r in rows if not st.is_study_key(r["talk_id"])])
+    studies = {r["id"]: r for r in conn.execute("SELECT * FROM studies WHERE user_id=?", (uid,))}
+    out = []
+    for r in rows:
+        key = r["talk_id"]
+        sid = st.study_id_of(key)
+        if sid is not None:
+            s = studies.get(sid)
+            if s is None:
+                continue
+            aud = s["audience"] if s["audience"] in CLASSES else DEFAULT_KEY
+            subject = {"kind": "study", "talk": None,
+                       "study": {"id": sid, "topic": s["topic"], "source_count": len(json.loads(s["sources_json"] or "[]"))},
+                       "has_digest": bool(s["summary_json"])}
+        elif key in talks:
+            aud = r["audience"] if r["audience"] in CLASSES else DEFAULT_KEY
+            subject = {"kind": "talk", "talk": talks[key], "study": None, "has_digest": bool(r["has_digest"])}
+        else:
+            continue
+        out.append({"lesson_id": key, **subject, "added_at": r["added_at"], "notes_len": r["notes_len"],
+                    "pin_count": r["pin_count"], "updated_at": r["updated_at"],
+                    "audience": aud, "audience_label": audience_label(aud)})
+    return out
 
 
 @router.get("/my-lessons")
@@ -97,11 +121,13 @@ def list_my_lessons(conn=Depends(get_conn), user=Depends(get_user)):
 
 @router.put("/my-lessons")
 def add_my_lesson(body: MyLessonBody, conn=Depends(get_conn), user=Depends(get_user)):
-    get_talk_or_404(conn, body.talk_id)
+    st.require_subject(conn, user["id"], body.talk_id)
     nxt = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM working_on WHERE user_id=?", (user["id"],)).fetchone()[0]
     if body.audience is not None and body.audience not in CLASSES:
         raise HTTPException(422, f"unknown audience {body.audience!r}")
     conn.execute("INSERT OR IGNORE INTO working_on(user_id, talk_id, ord) VALUES(?,?,?)", (user["id"], body.talk_id, nxt))
+    if body.audience is None and st.is_study_key(body.talk_id):    # a study carries its own audience
+        body.audience = st.study_audience(conn, user["id"], body.talk_id)
     if body.audience is not None:
         conn.execute("UPDATE working_on SET audience=? WHERE user_id=? AND talk_id=?",
                      (body.audience, user["id"], body.talk_id))
@@ -113,6 +139,14 @@ def add_my_lesson(body: MyLessonBody, conn=Depends(get_conn), user=Depends(get_u
 def set_lesson_audience(talk_id: str, body: AudienceBody, conn=Depends(get_conn), user=Depends(get_user)):
     if body.audience not in CLASSES:
         raise HTTPException(422, f"unknown audience {body.audience!r}")
+    sid = st.study_id_of(talk_id)
+    if sid is not None:
+        st.get_study_or_404(conn, user["id"], sid)
+        conn.execute("UPDATE studies SET audience=? WHERE id=? AND user_id=?", (body.audience, sid, user["id"]))
+        conn.execute("UPDATE working_on SET audience=? WHERE user_id=? AND talk_id=?",
+                     (body.audience, user["id"], talk_id))
+        conn.commit()
+        return {"audience": body.audience, "audience_label": audience_label(body.audience)}
     get_talk_or_404(conn, talk_id)
     nxt = conn.execute("SELECT COALESCE(MAX(ord), -1) + 1 FROM working_on WHERE user_id=?", (user["id"],)).fetchone()[0]
     conn.execute("INSERT OR IGNORE INTO working_on(user_id, talk_id, ord) VALUES(?,?,?)", (user["id"], talk_id, nxt))
@@ -131,6 +165,7 @@ def reorder_my_lessons(body: ReorderMine, conn=Depends(get_conn), user=Depends(g
 
 @router.delete("/my-lessons/{talk_id:path}")
 def remove_my_lesson(talk_id: str, conn=Depends(get_conn), user=Depends(get_user)):
+    # A study is only taken off the list, like a talk. Deleting it is DELETE /studies/{id}.
     conn.execute("DELETE FROM working_on WHERE user_id=? AND talk_id=?", (user["id"], talk_id))
     conn.commit()
     return my_lessons(conn, user["id"])
@@ -253,19 +288,25 @@ def shared_scriptures(talk_id: str, limit_per_passage: int = 12, conn=Depends(ge
     refs = conn.execute(
         "SELECT DISTINCT book, chapter, verse_start, verse_end FROM scripture_refs WHERE talk_id=? "
         "ORDER BY id", (talk_id,)).fetchall()
+    return shared_for_refs(conn, [(r["book"], r["chapter"], r["verse_start"], r["verse_end"]) for r in refs],
+                           exclude=talk_id, limit_per_passage=limit_per_passage)
+
+
+def shared_for_refs(conn: sqlite3.Connection, refs: list[tuple], exclude: str | list[str] | None = None,
+                    limit_per_passage: int = 12) -> list[dict]:
+    """For each (book, chapter, verse_start, verse_end), the talks that cite it, most-cited passage first."""
     out = []
     seen = set()
-    for r in refs:
-        key = (r["book"], r["chapter"], r["verse_start"], r["verse_end"])
+    for key in refs:
         if key in seen:
             continue
         seen.add(key)
-        others = talks_citing(conn, r["book"], r["chapter"], r["verse_start"], r["verse_end"],
-                              exclude=talk_id, limit=limit_per_passage)
+        book, chapter, vs, ve = key
+        others = talks_citing(conn, book, chapter, vs, ve, exclude=exclude, limit=limit_per_passage)
         out.append({
             "ref": format_ref(*key),
-            "book": display_book(r["book"]), "chapter": r["chapter"],
-            "verse_start": r["verse_start"], "verse_end": r["verse_end"],
+            "book": display_book(book), "chapter": chapter,
+            "verse_start": vs, "verse_end": ve,
             "count": others["total"],
             "talks": others["talks"],
         })
@@ -274,7 +315,7 @@ def shared_scriptures(talk_id: str, limit_per_passage: int = 12, conn=Depends(ge
 
 
 def talks_citing(conn: sqlite3.Connection, book: str, chapter: int, vs: int | None, ve: int | None,
-                 exclude: str | None = None, limit: int = 50) -> dict:
+                 exclude: str | list[str] | None = None, limit: int = 50) -> dict:
     if vs is None:
         where = "book=? AND chapter=?"
         args: list = [book, chapter]
@@ -284,8 +325,9 @@ def talks_citing(conn: sqlite3.Connection, book: str, chapter: int, vs: int | No
                  "(COALESCE(verse_end, verse_start) >= ? AND verse_start <= ?))")
         args = [book, chapter, vs, ve]
     if exclude:
-        where += " AND talk_id != ?"
-        args.append(exclude)
+        skip = [exclude] if isinstance(exclude, str) else list(exclude)
+        where += f" AND talk_id NOT IN ({','.join('?' * len(skip))})"
+        args += skip
     rows = conn.execute(
         f"SELECT talk_id, COUNT(*) AS n, MIN(raw) AS raw FROM scripture_refs WHERE {where} "
         "GROUP BY talk_id ORDER BY n DESC", args).fetchall()

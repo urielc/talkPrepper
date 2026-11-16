@@ -46,12 +46,19 @@ watch(
   },
 )
 
-const suggestions = [
+const talkSuggestions = [
   'Summarize the main message of this talk in three or four points, quoting its own words.',
   'List the scriptures this talk cites and what each one adds to the message.',
   'Find other conference talks on the same topic and say how each relates.',
   'What questions could I ask the quorum to open a discussion on this talk?',
 ]
+const studySuggestions = [
+  'Which of the queued sources says the most about this topic, and what does it say?',
+  'Where do the sources agree, and where do they approach the topic differently?',
+  'Find other conference talks or scripture passages on this topic that the queue is missing.',
+  'Suggest a simple way to open and close a lesson or talk on this topic.',
+]
+const suggestions = computed(() => (props.talkId.startsWith('study:') ? studySuggestions : talkSuggestions))
 
 async function send(text?: string) {
   const t = (text ?? input.value).trim()

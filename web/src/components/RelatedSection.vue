@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { api, type Hit } from '../api'
 import TalkListItem from './TalkListItem.vue'
 
-const props = defineProps<{ talkId: string }>()
+/** studyId switches to a topic study: related talks come from its topic and themes, not one talk's key terms.
+ *  version refetches when the study's summary changes. */
+const props = defineProps<{ talkId: string; studyId?: number; version?: string }>()
 const emit = defineEmits<{ (e: 'count', n: number): void }>()
 const results = ref<Hit[]>([])
 const terms = ref<string[]>([])
@@ -31,7 +33,7 @@ async function run(override?: string[]) {
   error.value = null
   results.value = []
   try {
-    const r = await api.related(props.talkId, 40, override)
+    const r = props.studyId ? await api.studyRelated(props.studyId, 40) : await api.related(props.talkId, 40, override)
     results.value = r.results
     terms.value = r.terms
     semantic.value = r.semantic
@@ -45,7 +47,7 @@ async function run(override?: string[]) {
 }
 
 watch(
-  () => props.talkId,
+  () => [props.talkId, props.version],
   () => {
     editing.value = false
     custom.value = false
@@ -94,7 +96,7 @@ function aside(h: Hit): string | undefined {
 
 <template>
   <div>
-    <div v-if="editing" class="row wrap edit">
+    <div v-if="editing && !studyId" class="row wrap edit">
       <input
         v-model="draft"
         type="text"
@@ -110,7 +112,7 @@ function aside(h: Hit): string | undefined {
     <p v-else-if="terms.length" class="muted small terms">
       Matched on: {{ terms.join(', ') }}
       <span v-if="custom" class="badge">edited</span>
-      <button type="button" class="quiet small edit-btn" @click="startEdit">Edit</button>
+      <button v-if="!studyId" type="button" class="quiet small edit-btn" @click="startEdit">Edit</button>
     </p>
 
     <div v-if="!semantic && !loading" class="notice small">

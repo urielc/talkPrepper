@@ -29,6 +29,22 @@ def test_audience_key_and_class(audience, gender, key, name):
     assert class_name(key) == name
 
 
+@pytest.mark.parametrize("key", ["sacrament", "personal"])
+def test_non_class_audiences(key):
+    from server.audience import CLASSES, is_class, label, question_style
+    from server.manuals import matches_audience
+    assert key in CLASSES and not is_class(key) and audience_key(key, "male") == key
+    assert question_style(key) and label(key)
+    assert matches_audience("children", key, None) and matches_audience("adults male", key, None)   # no filter
+    assert is_class("adults-male")
+    digest_prompt = dg.system_prompt(key)
+    assert "{" not in digest_prompt and "teacher" not in digest_prompt and "lead " not in digest_prompt
+    chat_prompt = build_system({"id": "x", "title": "T", "speaker": "S"}, [], key)
+    assert "lead" not in chat_prompt.split("ASSIGNED TALK")[0]
+    assert ("sacrament meeting talk" in chat_prompt) == (key == "sacrament")
+    assert "—" not in digest_prompt
+
+
 def test_parse_calling():
     assert parse_calling(["By Sister J. Anette Dennis", "First Counselor in the Relief Society General Presidency",
                           "Only the Lord fully knows."]) == "First Counselor in the Relief Society General Presidency"

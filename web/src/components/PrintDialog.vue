@@ -5,14 +5,24 @@ import { api } from '../api'
 const props = defineProps<{ talkId: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const options = [
-  { key: 'notes', label: 'Notes', hint: 'Your lesson notes' },
-  { key: 'essence', label: 'Essence', hint: 'The talk’s central message' },
-  { key: 'points', label: 'Main points', hint: 'Observations in the talk’s order' },
-  { key: 'quotes', label: 'Worth reading aloud', hint: 'Verbatim quotations from the talk' },
-  { key: 'questions', label: 'Questions for the quorum', hint: 'Opening, discussion and application questions' },
-  { key: 'pins', label: 'Pinned references', hint: 'Talks, passages and quotes you pinned' },
-]
+const isStudy = props.talkId.startsWith('study:')
+const options = isStudy
+  ? [
+      { key: 'notes', label: 'Notes', hint: 'Your lesson notes' },
+      { key: 'essence', label: 'Overview', hint: 'What the sources say about the topic' },
+      { key: 'points', label: 'Themes', hint: 'The themes that run through the sources' },
+      { key: 'quotes', label: 'Worth reading aloud', hint: 'Verbatim quotations from the sources' },
+      { key: 'questions', label: 'Questions and further material', hint: 'Questions to ponder, further material and the source list' },
+      { key: 'pins', label: 'Pinned references', hint: 'Talks, passages, quotes and notes you pinned' },
+    ]
+  : [
+      { key: 'notes', label: 'Notes', hint: 'Your lesson notes' },
+      { key: 'essence', label: 'Essence', hint: 'The talk’s central message' },
+      { key: 'points', label: 'Main points', hint: 'Observations in the talk’s order' },
+      { key: 'quotes', label: 'Worth reading aloud', hint: 'Verbatim quotations from the talk' },
+      { key: 'questions', label: 'Questions', hint: 'Opening, discussion and application questions' },
+      { key: 'pins', label: 'Pinned references', hint: 'Talks, passages and quotes you pinned' },
+    ]
 
 const selected = ref<Set<string>>(new Set(options.map((o) => o.key)))
 try {

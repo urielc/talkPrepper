@@ -5,7 +5,7 @@ import { api } from './api'
 import { useUiStore } from './stores/ui'
 import { useLessonStore } from './stores/lesson'
 import { useAuthStore } from './stores/auth'
-import { talkRoute } from './router'
+import { lessonRoute } from './router'
 import TalkDrawer from './components/TalkDrawer.vue'
 import ScripturePanel from './components/ScripturePanel.vue'
 import JosephusPanel from './components/JosephusPanel.vue'
@@ -58,9 +58,9 @@ function cycleTheme() {
           </button>
           <div v-if="menu === 'lessons'" class="menu" role="menu">
             <p v-if="!lesson.mine.length" class="muted small pad">Nothing in progress yet.</p>
-            <RouterLink v-for="m in lesson.mine" :key="m.talk.id" :to="talkRoute(m.talk.id)" class="item" role="menuitem" @click="menu = null">
-              <span class="item-title">{{ m.talk.title }}</span>
-              <span class="item-meta">{{ m.talk.speaker }}, {{ m.talk.conference }}</span>
+            <RouterLink v-for="m in lesson.mine" :key="m.lesson_id" :to="lessonRoute(m)" class="item" role="menuitem" @click="menu = null">
+              <span class="item-title">{{ m.talk ? m.talk.title : m.study?.topic }}</span>
+              <span class="item-meta">{{ m.talk ? `${m.talk.speaker}, ${m.talk.conference}` : `Topic study, ${m.study?.source_count} sources` }}</span>
             </RouterLink>
           </div>
         </div>

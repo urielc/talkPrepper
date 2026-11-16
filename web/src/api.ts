@@ -73,6 +73,8 @@ export type AudienceKey =
   | 'youth-female'
   | 'youth'
   | 'children'
+  | 'sacrament'
+  | 'personal'
 
 /** Build the audience key the server stores: 'youth-female', 'children', … */
 export function audienceKey(audience: Audience, gender: Gender): AudienceKey {
@@ -88,13 +90,22 @@ export const AUDIENCE_LABELS: Record<AudienceKey, string> = {
   'youth-female': 'Young Women class',
   youth: 'Youth Sunday School',
   children: 'Primary',
+  sacrament: 'Sacrament meeting talk',
+  personal: 'Other (personal study)',
 }
 
-export interface SuggestedTalk extends TalkSummary {
-  calling: string
-  audience_tags: string[]
-  score: number
-  snippet: string
+/** Wording for the people a lesson is for: "the quorum", "the class", or nobody for a talk or personal study. */
+export function audienceWho(key: AudienceKey): string {
+  if (key === 'adults-male' || key === 'youth-male') return 'the quorum'
+  if (key === 'sacrament' || key === 'personal') return ''
+  return 'the class'
+}
+
+/** Heading for the generated questions, by audience. */
+export function questionsHeading(key: AudienceKey): string {
+  if (key === 'sacrament') return 'Prompts for your talk'
+  if (key === 'personal') return 'Questions to ponder'
+  return `Questions for ${audienceWho(key)}`
 }
 
 export interface ManualPageSummary {
@@ -108,14 +119,27 @@ export interface ManualPageSummary {
   snippet?: string
 }
 
-export interface Suggestions {
-  topic: string
-  audience: AudienceKey
-  class: string
-  talks: SuggestedTalk[]
-  manuals: ManualPageSummary[]
-  songs: ManualPageSummary[]
-  semantic_available: boolean
+export type SourceKind = 'talk' | 'manual' | 'song' | 'scripture' | 'josephus' | 'apocrypha'
+
+/** One source in a topic study's queue: ref is the talk id, manual URI, scripture ref or Josephus ref. */
+export interface SourceItem {
+  kind: SourceKind
+  ref: string
+  title: string
+}
+
+/** One topic-search result, whatever its kind; extra fields depend on the kind. */
+export interface TopicItem {
+  kind: SourceKind
+  ref: string
+  title: string
+  subtitle?: string
+  snippet?: string
+  speaker?: string
+  conference?: string
+  calling?: string
+  manual?: string
+  manual_kind?: string
 }
 
 export interface RefineResult {
@@ -123,6 +147,30 @@ export interface RefineResult {
   picks: { talk_id: string; reason: string }[]
   provider: string
   model: string
+}
+
+export type TopicGroup = 'talks' | 'manuals' | 'songs' | 'scriptures' | 'josephus' | 'apocrypha'
+
+/** Refine with AI for one group: picks name candidate refs; additions are new passages (scriptures, Apocrypha). */
+export interface GroupRefineResult {
+  audience: AudienceKey
+  group: TopicGroup
+  picks: { ref: string; reason: string }[]
+  additions: (TopicItem & { reason: string })[]
+  provider: string
+  model: string
+}
+
+export interface TopicResults {
+  topic: string
+  audience: AudienceKey
+  talks: TopicItem[]
+  manuals: TopicItem[]
+  songs: TopicItem[]
+  scriptures: TopicItem[]
+  josephus: TopicItem[]
+  apocrypha: TopicItem[]
+  semantic_available: boolean
 }
 
 export interface ManualPage extends ManualPageSummary {
@@ -252,8 +300,18 @@ export interface AdminUser extends User {
   invite_pending: boolean
 }
 
+export interface StudyRef {
+  id: number
+  topic: string
+  source_count: number
+}
+
+/** A lesson the user is working on: a talk or a topic study. lesson_id is the lesson key (talk id or study:<id>). */
 export interface MyLesson {
-  talk: TalkSummary
+  kind: 'talk' | 'study'
+  lesson_id: string
+  talk: TalkSummary | null
+  study: StudyRef | null
   added_at: string
   notes_len: number
   pin_count: number
@@ -261,6 +319,53 @@ export interface MyLesson {
   updated_at: string | null
   audience: AudienceKey
   audience_label: string
+}
+
+/** A row of the study list: the user's studies whether or not they are in my lessons. */
+export interface StudyListItem {
+  id: number
+  key: string
+  topic: string
+  audience: AudienceKey
+  audience_label: string
+  source_count: number
+  has_summary: boolean
+  in_my_lessons: boolean
+  updated_at: string
+}
+
+export interface StudyTheme {
+  heading: string
+  body: string
+  sources: string[]
+}
+
+export interface StudySummary {
+  overview: string
+  themes: StudyTheme[]
+  key_quotes: { text: string; source: string; why: string; verified: boolean }[]
+  scriptures: string[]
+  ponder: { question: string; kind: 'opening' | 'discussion' | 'application'; note: string }[]
+  further: { candidate_id: string; kind: SourceKind; ref: string; title: string; why: string }[]
+  source_labels: { label: string; kind: SourceKind; ref: string; title: string; trimmed: boolean }[]
+  missing: SourceItem[]
+  provider: string
+  model: string
+}
+
+export interface Study {
+  id: number
+  key: string
+  topic: string
+  audience: AudienceKey
+  audience_label: string
+  modifier: string
+  sources: SourceItem[]
+  summary: StudySummary | null
+  created_at: string
+  updated_at: string
+  /** Set by create when the AI step failed; the study exists and can be regenerated. */
+  error?: string | null
 }
 
 export class ApiError extends Error {
@@ -337,10 +442,28 @@ export const api = {
   chapter: (book: string, chapter: number) => get<Lookup>(`/scriptures/${encodeURIComponent(book)}/${chapter}`),
   josephus: (ref: string) => get<JosephusPassage>(`/josephus/lookup?ref=${encodeURIComponent(ref)}`),
   manualPage: (uri: string) => get<ManualPage>(`/manuals/lookup?uri=${encodeURIComponent(uri)}`),
-  suggest: (topic: string, audience: Audience, gender: Gender, limit = 20) =>
-    post<Suggestions>('/suggest', { topic, audience, gender, limit }),
-  refineSuggestions: (topic: string, audience: Audience, gender: Gender, talk_ids: string[]) =>
-    post<RefineResult>('/suggest/refine', { topic, audience, gender, talk_ids }),
+  topicSearch: (topic: string, audience: AudienceKey) => post<TopicResults>('/topic-search', { topic, audience }),
+  refineTalks: (topic: string, audience: AudienceKey, talk_ids: string[]) =>
+    post<RefineResult>('/suggest/refine', { topic, audience, gender: 'any', talk_ids }),
+  refineGroup: (topic: string, audience: AudienceKey, group: TopicGroup, items: TopicItem[]) =>
+    post<GroupRefineResult>('/topic-search/refine', {
+      topic,
+      audience,
+      group,
+      items: items.map((i) => ({ ref: i.ref, title: i.title, subtitle: i.subtitle ?? '', snippet: i.snippet ?? '' })),
+    }),
+  createStudy: (body: { topic: string; audience: AudienceKey; sources: SourceItem[]; modifier: string }) =>
+    post<Study>('/studies', body),
+  studies: () => get<StudyListItem[]>('/studies'),
+  study: (id: number) => get<Study>(`/studies/${id}`),
+  patchStudy: (id: number, body: { topic?: string; audience?: AudienceKey; sources?: SourceItem[]; modifier?: string }) =>
+    patch<Study>(`/studies/${id}`, body),
+  regenerateStudy: (id: number) => post<Study>(`/studies/${id}/generate`),
+  deleteStudy: (id: number) => del<{ ok: boolean }>(`/studies/${id}`),
+  studyRelated: (id: number, limit = 20) =>
+    get<{ terms: string[]; results: Hit[]; semantic: boolean; custom: boolean }>(`/studies/${id}/related?limit=${limit}`),
+  studyScriptures: (id: number) =>
+    get<{ ref: string; count: number; talks: TalkSummary[] }[]>(`/studies/${id}/scriptures`),
 
   digest: (id: string) => get<Digest | null>(`/talks/${id}/digest`),
   generateDigest: (id: string) => post<Digest>(`/talks/${id}/digest`),

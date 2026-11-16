@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { api, AUDIENCE_LABELS, type Conference, type TalkSummary } from '../api'
-import TopicSuggest from '../components/TopicSuggest.vue'
-import { talkRoute } from '../router'
+import { api, AUDIENCE_LABELS, type Conference, type MyLesson, type StudyListItem, type TalkSummary } from '../api'
+import TopicStudy from '../components/TopicStudy.vue'
+import { lessonRoute, talkRoute } from '../router'
 import { useAuthStore } from '../stores/auth'
 import { useLessonStore } from '../stores/lesson'
 
@@ -39,6 +39,7 @@ const q = ref('')
 const allConferences = ref(false)
 const results = ref<TalkSummary[] | null>(null)
 const others = ref<{ talk: TalkSummary; notes_len: number; pin_count: number }[]>([])
+const otherStudies = ref<StudyListItem[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -49,6 +50,7 @@ onMounted(async () => {
     if (conferences.value.length) conferenceId.value = conferences.value[0].id
     const recent = await api.lessons()
     others.value = recent.filter((r) => !lesson.isMine(r.talk.id))
+    await loadOtherStudies()
   } catch (e: any) {
     error.value = e.message
   }
@@ -90,11 +92,44 @@ async function hideOther(talkId: string) {
   }
 }
 
-function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boolean }): string {
+async function loadOtherStudies() {
+  otherStudies.value = (await api.studies()).filter((s) => !s.in_my_lessons)
+}
+
+/** Takes a lesson off the list. A study is kept and moves to "Your studies" below. */
+async function removeLesson(m: MyLesson) {
+  try {
+    await lesson.removeMine(m.lesson_id)
+    if (m.kind === 'study') await loadOtherStudies()
+  } catch (e: any) {
+    error.value = e.message
+  }
+}
+
+async function addStudy(s: StudyListItem) {
+  try {
+    await lesson.addMine(s.key)
+    otherStudies.value = otherStudies.value.filter((o) => o.id !== s.id)
+  } catch (e: any) {
+    error.value = e.message
+  }
+}
+
+async function deleteStudy(s: StudyListItem) {
+  if (!window.confirm(`Delete the study “${s.topic}” with its notes and pins? This cannot be undone.`)) return
+  try {
+    await api.deleteStudy(s.id)
+    otherStudies.value = otherStudies.value.filter((o) => o.id !== s.id)
+  } catch (e: any) {
+    error.value = e.message
+  }
+}
+
+function lessonMeta(m: MyLesson): string {
   const parts: string[] = []
   if (m.notes_len) parts.push('notes')
   if (m.pin_count) parts.push(`${m.pin_count} pinned`)
-  if (m.has_digest) parts.push('digest')
+  if (m.has_digest) parts.push(m.kind === 'study' ? 'summary' : 'digest')
   return parts.join(', ')
 }
 </script>
@@ -104,24 +139,48 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
     <section class="col mine">
       <h1>{{ firstName ? `${firstName}, your lessons` : 'Your lessons' }}</h1>
       <p v-if="!lesson.mine.length" class="empty">
-        Nothing in progress. Find a talk by topic or conference on the right, or open one and choose “Add to my
-        lessons” in its header.
+        Nothing in progress. Search a topic on the right to build a study, find a talk by conference, or open a talk
+        and choose “Add to my lessons” in its header.
       </p>
       <ul v-else class="cards">
-        <li v-for="m in lesson.mine" :key="m.talk.id" class="card">
-          <RouterLink :to="talkRoute(m.talk.id)" class="card-main">
-            <span class="card-title">{{ m.talk.title }}</span>
-            <span class="talk-meta">{{ m.talk.speaker }}, {{ m.talk.conference }}</span>
+        <li v-for="m in lesson.mine" :key="m.lesson_id" class="card">
+          <RouterLink :to="lessonRoute(m)" class="card-main">
+            <span class="card-title">{{ m.talk ? m.talk.title : m.study?.topic }}</span>
+            <span v-if="m.talk" class="talk-meta">{{ m.talk.speaker }}, {{ m.talk.conference }}</span>
+            <span v-else class="talk-meta">Topic study, {{ m.study?.source_count }} {{ m.study?.source_count === 1 ? 'source' : 'sources' }}</span>
             <span class="card-meta">
               {{ AUDIENCE_LABELS[m.audience] || 'Elders quorum' }}<template v-if="lessonMeta(m)"> · {{ lessonMeta(m) }}</template>
             </span>
           </RouterLink>
           <div class="card-actions">
-            <RouterLink :to="talkRoute(m.talk.id)" class="btn-link">Continue</RouterLink>
-            <button class="quiet small" @click="lesson.removeMine(m.talk.id)">Remove</button>
+            <RouterLink :to="lessonRoute(m)" class="btn-link">Continue</RouterLink>
+            <button
+              class="quiet small"
+              :title="m.kind === 'study' ? 'Remove from my lessons. The study stays under Your studies.' : 'Remove from my lessons'"
+              @click="removeLesson(m)"
+            >
+              Remove
+            </button>
           </div>
         </li>
       </ul>
+
+      <template v-if="otherStudies.length">
+        <h3>Your studies</h3>
+        <ul class="plain">
+          <li v-for="s in otherStudies" :key="s.id" class="other">
+            <RouterLink :to="`/study/${s.id}`" class="talk">
+              <span class="talk-title">{{ s.topic }}</span>
+              <span class="talk-meta">
+                Topic study, {{ s.source_count }} {{ s.source_count === 1 ? 'source' : 'sources' }} · {{ s.audience_label }}
+              </span>
+            </RouterLink>
+            <RouterLink :to="`/study/${s.id}`" class="small open">Open</RouterLink>
+            <button class="quiet small" @click="addStudy(s)">Add to my lessons</button>
+            <button class="quiet small" title="Deletes the study with its notes and pins" @click="deleteStudy(s)">Delete</button>
+          </li>
+        </ul>
+      </template>
 
       <template v-if="others.length">
         <h3>Other talks with notes</h3>
@@ -154,7 +213,7 @@ function lessonMeta(m: { notes_len: number; pin_count: number; has_digest: boole
           By conference
         </button>
       </div>
-      <TopicSuggest v-if="finder === 'topic'" :initial-topic="initialTopic" />
+      <TopicStudy v-if="finder === 'topic'" :initial-topic="initialTopic" />
       <template v-else>
       <div class="controls">
         <select v-model="conferenceId" aria-label="Conference">
@@ -323,7 +382,8 @@ h3 {
   flex: 1;
   min-width: 0;
 }
-.other button {
+.other button,
+.other .open {
   flex-shrink: 0;
 }
 .talk {

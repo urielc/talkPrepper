@@ -22,7 +22,7 @@ export const useLessonStore = defineStore('lesson', () => {
     }
   }
   function isMine(id: string): boolean {
-    return mine.value.some((m) => m.talk.id === id)
+    return mine.value.some((m) => m.lesson_id === id)
   }
   async function addMine(id: string, audience?: AudienceKey, quiet = false) {
     mine.value = await api.addMyLesson(id, audience)
