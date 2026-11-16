@@ -4,17 +4,35 @@ Dated status that git does not already record. Update or delete lines as they re
 
 ## To do
 
-1. **Topic studies: end-to-end check and deploy** (built 2026-11-15, not committed). Lessons built on any set of
-   sources (talks, manual pages, songs, scripture passages, Josephus, Apocrypha), replacing the old "By topic" tab;
-   this also closes the 2026-11-12 request for lessons built on manual pages. Done in code and tests (170 pass,
-   web build clean). Still to do: a full pass in the browser (Sacrament audience, preview and queue five mixed
-   sources, modifier, summarize, check the workspace panels, pin a quote and a question, Ask AI, print, phone
-   width), then commit, push (CD deploys) and watch the Deploy run. `studies` is created at startup; no data copy.
-   Design: the study is a lesson with the key `study:<id>` in `working_on`, `lessons`, `pins` and `chat_sessions`
-   (`server/studies.py`); the workspace swaps only its center and bottom panels (`StudySummary.vue`,
-   `PonderPane.vue`). Known gaps: related talks for a study show no shared-scripture counts; the summary does not
-   regenerate when the class changes (a toast says so); sources are removed or added by "Edit sources", which loads
-   the queue back into the topic page.
+1. **Check paragraph numbering against Gospel Library** (open, needs Uri). Poem and song lines (`kind` verse,
+   7,363 of them) and block quotes (11) are numbered one per line or paragraph. Compare 2026-04 Renlund (closing
+   song lines, now ¶14 to ¶17) and a talk with a block quote in the app. If the app numbers them differently,
+   change `paragraph_numbers` in `server/indexer.py` and re-index (local and box); no re-scrape needed.
+   Letter-style paragraphs (classes `address`, `closing`, `office`, `salutation`, `signature`, in reports and
+   letters) are counted as body.
+2. **Restart the LAN instance** (port 8765) so it runs the new code; its index already has the numbers.
+3. Delete the droplet backups `/var/backups/lessonprep-20261006`, `-20261007`, `-20261112` and `-20261115` once
+   satisfied.
+
+## Paragraph numbers and topic studies (done 2026-11-15, 2766716 and 894b2c3, deployed)
+
+In production since 2026-11-15: code via CD (run 43792859901), then the re-scraped
+`general_conference_talks.json` plus `embeddings/chunks.npy` and `chunk_hashes.json` installed in the data dir
+and re-indexed there (4,305 talks, 147,799 numbered paragraphs, 0 embedded on the box). Pre-update backup in
+`/var/backups/lessonprep-20261115` on the droplet. The box has no `sqlite3` CLI; use Python's `sqlite3.backup`.
+
+- Paragraph numbers: the scraper stores a kind per paragraph (`para_kinds`); the indexer numbers body, quote and
+  verse paragraphs (Gospel Library starts at the first body paragraph; author, role and kicker are unnumbered).
+  The full re-scrape (2026-11-15) changed the text of only two talks (1991-10 "Joy and Mercy", 2026-10 Dube),
+  same paragraph counts. The 1973-04 conference index page comes back empty (HTTP 200, 0 bytes), so
+  `--refresh 1973/04` finds no talks; it was re-fetched by the stored talk URLs instead.
+- Topic studies replace the "By topic" tab: class first (adds Sacrament meeting talk and Other/personal study),
+  search, preview and queue talks, manual pages, songs, scripture and Apocrypha passages and Josephus, optional
+  instructions, AI summary. A study is a lesson keyed `study:<id>` in `working_on`, `lessons`, `pins` and
+  `chat_sessions` (`server/studies.py`); the workspace swaps only its center and bottom panels. Removing a study
+  from my lessons keeps it under "Your studies"; Delete is separate and confirmed. Every result group has Refine
+  with AI; for scriptures the AI can add passages, each validated against the verse table. Known gaps: related
+  talks for a study show no shared-scripture counts; changing a study's class does not regenerate its summary.
 
 ## Topic search, class audience, Church manuals and songs (done 2026-11-12, 4616106, deployed)
 
