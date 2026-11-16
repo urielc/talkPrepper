@@ -150,6 +150,20 @@ def mark_notes(paragraphs: list[str]) -> list[bool]:
     return flags
 
 
+def paragraph_numbers(kinds: list[str]) -> list[int | None]:
+    """Displayed paragraph numbers: body, quote and verse (poem line) paragraphs count 1, 2, 3 ...; everything else is None.
+    Kept in one place so the rule can be tuned against Gospel Library."""
+    out: list[int | None] = []
+    n = 0
+    for k in kinds:
+        if k in ("body", "quote", "verse"):
+            n += 1
+            out.append(n)
+        else:
+            out.append(None)
+    return out
+
+
 def speaker_from_paragraphs(paragraphs: list[str]) -> str:
     for p in paragraphs[:3]:
         m = re.match(r"(?:Presented by|By)\s+(.+)", p)
@@ -340,7 +354,12 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
             tid = talk_id_from_url(t["url"])
             if not tid:
                 continue
-            paragraphs = [p for p in t.get("paragraphs", []) if p and p.strip()]
+            raw_paras = t.get("paragraphs", [])
+            paragraphs = [p for p in raw_paras if p and p.strip()]
+            raw_kinds = t.get("para_kinds")
+            kinds = None
+            if raw_kinds and len(raw_kinds) == len(raw_paras):
+                kinds = [k for p, k in zip(raw_paras, raw_kinds) if p and p.strip()]
             speaker = (t.get("speaker") or "").strip() or speaker_from_paragraphs(paragraphs)
             speaker = speaker.replace("\xa0", " ")
             title = (t.get("title") or "").strip().replace("\xa0", " ")
@@ -352,6 +371,7 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
                 notes = [(n["text"], True, n["n"], None) for n in t["notes"] if n.get("text")]
                 items = body + notes
             else:
+                kinds = None
                 flags = mark_notes(paragraphs)
                 items = [(p, fl, None, None) for p, fl in zip(paragraphs, flags)]
             wc = sum(len(p.split()) for p, fl, _m, _r in items if not fl)
@@ -360,8 +380,11 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
             tags = talk_audience_tags(title, speaker, calling, "\n".join(body_texts[2:]))
             talk_rows.append((tid, cid, speaker, title, t["url"], wc, ord_, calling, " ".join(tags)))
             plist = []
+            nums = paragraph_numbers(kinds) if kinds is not None else None
             for idx, (p, fl, marker, note_refs) in enumerate(items):
-                para_rows.append((tid, idx, p, int(fl), marker, note_refs))
+                in_body = nums is not None and idx < len(nums) and not fl
+                para_rows.append((tid, idx, p, int(fl), marker, note_refs,
+                                  nums[idx] if in_body else None, kinds[idx] if in_body else None))
                 plist.append((idx, p, fl))
             talk_paragraphs[tid] = plist
         report("talks", ci + 1, len(conf_items))
@@ -373,7 +396,7 @@ def build_index(conn: sqlite3.Connection, talks_json: Path = TALKS_JSON,
             "INSERT INTO talks(id, conference_id, speaker, title, url, word_count, ord, calling, audience_tags) "
             "VALUES(?,?,?,?,?,?,?,?,?)",
             talk_rows)
-        conn.executemany("INSERT INTO paragraphs(talk_id, idx, text, is_note, marker, note_refs) VALUES(?,?,?,?,?,?)", para_rows)
+        conn.executemany("INSERT INTO paragraphs(talk_id, idx, text, is_note, marker, note_refs, num, kind) VALUES(?,?,?,?,?,?,?,?)", para_rows)
         conn.executemany("INSERT INTO talks_fts(id, title, speaker) VALUES(?,?,?)",
                          [(r[0], r[3], r[2]) for r in talk_rows])
         conn.execute("INSERT INTO paragraphs_fts(paragraphs_fts) VALUES('rebuild')")

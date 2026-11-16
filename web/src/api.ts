@@ -39,6 +39,8 @@ export interface Paragraph {
   text: string
   is_note: boolean
   marker: number | null
+  num: number | null
+  kind: string | null
   note_refs: { n: number; pos: number }[]
   refs: ScriptureRefInline[]
 }

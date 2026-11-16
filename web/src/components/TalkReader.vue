@@ -55,8 +55,11 @@ function gotoNote(n: number) {
 }
 
 // Body paragraphs, minus a "By Elder X" byline that may sit after an opening epigraph.
+// A talk indexed with paragraph kinds uses them instead of the heuristics.
+const hasKinds = computed(() => props.talk.paragraphs.some((p) => !p.is_note && p.kind))
 const body = computed(() => {
   const paras = props.talk.paragraphs.filter((p) => !p.is_note)
+  if (hasKinds.value) return paras.filter((p) => p.kind !== 'author')
   return paras.filter((p, i) => !(i < 3 && p.text.length < 90 && /^(By|Presented by)\s/.test(p.text)))
 })
 const notes = computed(() => props.talk.paragraphs.filter((p) => p.is_note))
@@ -64,6 +67,7 @@ const notes = computed(() => props.talk.paragraphs.filter((p) => p.is_note))
 
 // Short opening lines without terminal punctuation are the speaker's role or a kicker, not prose.
 function isKicker(p: Paragraph, i: number): boolean {
+  if (hasKinds.value) return p.kind === 'role' || p.kind === 'kicker'
   return i < 2 && p.text.length < 110 && !/[.!?”"]$/.test(p.text.trim())
 }
 
@@ -144,7 +148,8 @@ watch(
     </div>
 
     <div class="body">
-      <p v-for="(p, i) in body" :key="p.id" :data-pid="p.id" :data-idx="p.idx" :class="{ kicker: isKicker(p, i) }">
+      <p v-for="(p, i) in body" :key="p.id" :data-pid="p.id" :data-idx="p.idx"
+         :data-num="p.num ?? undefined" :class="{ kicker: isKicker(p, i), numbered: p.num != null }">
         <template v-for="(s, i) in segments(p)" :key="i">
           <button v-if="s.note != null" class="fn" @click="gotoNote(s.note)" :title="`Note ${s.note}`"><sup>{{ s.note }}</sup></button>
           <button
@@ -191,6 +196,25 @@ watch(
 }
 .body p {
   margin: 0 0 1.05em;
+}
+.body p.numbered {
+  position: relative;
+  padding-left: 1.9rem;
+}
+/* Gutter number drawn by CSS so it is never part of a selection or a copied quote. */
+.body p.numbered::before {
+  content: attr(data-num);
+  position: absolute;
+  left: 0;
+  top: 0.3em;
+  width: 1.4rem;
+  text-align: right;
+  font-family: var(--sans);
+  font-size: var(--fs-1);
+  line-height: 1.6;
+  color: var(--ink-3);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .body p.kicker {
   font-family: var(--sans);

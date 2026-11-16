@@ -30,7 +30,9 @@ Keep answers compact and scannable: short paragraphs, bullet lists for multiple 
 
 
 def build_system(talk: dict, paragraphs: list[dict], audience: str = DEFAULT_KEY) -> str:
-    body = "\n\n".join(p["text"] for p in paragraphs if not p.get("is_note"))
+    body = "\n\n".join((f"¶{p['num']} " if p.get("num") else "") + p["text"]
+                       for p in paragraphs if not p.get("is_note"))
+    numbered = any(p.get("num") for p in paragraphs if not p.get("is_note"))
     notes = "\n".join(p["text"] for p in paragraphs if p.get("is_note"))
     scriptures = ", ".join(s["ref"] for s in talk.get("scriptures", [])) or "none detected"
     header = (
@@ -39,7 +41,8 @@ def build_system(talk: dict, paragraphs: list[dict], audience: str = DEFAULT_KEY
         f"Scriptures cited: {scriptures}\n"
     )
     role = ROLE.replace("{class_name}", class_name(audience)).replace("{class_members}", class_members(audience))
-    text = f"{role}\n\n{header}\n--- TALK TEXT ---\n{body}\n"
+    key = "Paragraphs are marked ¶N; class members refer to paragraphs by these numbers.\n" if numbered else ""
+    text = f"{role}\n\n{header}\n--- TALK TEXT ---\n{key}{body}\n"
     if notes:
         text += f"\n--- FOOTNOTES ---\n{notes}\n"
     return text

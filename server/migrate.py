@@ -67,6 +67,13 @@ def apply_schema(conn: sqlite3.Connection) -> list[str]:
             conn.execute("ALTER TABLE talks ADD COLUMN audience_tags TEXT NOT NULL DEFAULT ''")
             done.append("talks: added audience_tags")
 
+    if _table_exists(conn, "paragraphs"):
+        cols = _columns(conn, "paragraphs")
+        for col, decl in (("num", "INTEGER"), ("kind", "TEXT")):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE paragraphs ADD COLUMN {col} {decl}")
+                done.append(f"paragraphs: added {col}")
+
     if _table_exists(conn, "working_on") and "audience" not in _columns(conn, "working_on"):
         conn.execute("ALTER TABLE working_on ADD COLUMN audience TEXT")
         done.append("working_on: added audience")

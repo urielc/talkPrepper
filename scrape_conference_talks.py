@@ -165,6 +165,26 @@ class ConferenceTalkScraper:
         footer.decompose()
         return notes
 
+    KIND_BY_CLASS = {'author-name': 'author', 'author-role': 'role', 'kicker': 'kicker', 'title': 'title',
+                     'line': 'verse'}
+    KIND_BY_ANCESTOR = (('blockquote', 'quote'), ('figure', 'caption'), ('figcaption', 'caption'), ('header', 'header'))
+    unknown_classes = set()   # <p> classes seen that paragraph_kind does not recognize
+
+    def paragraph_kind(self, p, root):
+        """Role of a <p> in the talk: author, role, kicker, title, verse, quote, caption, header or body."""
+        classes = p.get('class') or []
+        for c in classes:
+            if c in self.KIND_BY_CLASS:
+                return self.KIND_BY_CLASS[c]
+        for parent in p.parents:
+            if parent is root:
+                break
+            for name, kind in self.KIND_BY_ANCESTOR:
+                if parent.name == name:
+                    return kind
+        self.unknown_classes.update(classes)
+        return 'body'
+
     def extract_talk_content(self, html):
         """Extract text content from a talk page.
 
@@ -180,13 +200,15 @@ class ConferenceTalkScraper:
 
         notes = self.extract_notes(content_div)
 
-        paragraphs, note_refs = [], []
+        paragraphs, note_refs, para_kinds = [], [], []
         for p in content_div.find_all('p'):
+            kind = self.paragraph_kind(p, content_div)
             text, refs = self.paragraph_text(p)
             # Skip empty paragraphs or very short ones (likely metadata)
             if text and len(text) > 5:
                 paragraphs.append(text)
                 note_refs.append(refs)
+                para_kinds.append(kind)
 
         speaker = None
         for text in paragraphs[:5]:
@@ -207,6 +229,7 @@ class ConferenceTalkScraper:
             'content': '\n\n'.join(paragraphs),
             'paragraphs': paragraphs,
             'note_refs': note_refs,
+            'para_kinds': para_kinds,
             'notes': notes,
         }
 
@@ -324,6 +347,24 @@ def load_existing(output_file):
     return {url: conf['talks'] for url, conf in data.get('conferences', {}).items()}
 
 
+def report_paragraph_changes(old_talks, new_talks):
+    """Print one line per talk whose paragraph list differs from the stored one (informational).
+    Cached digests cite paragraphs by position, so a changed list matters."""
+    old_by_url = {t.get('url'): t for t in old_talks}
+    changed = 0
+    for t in new_talks:
+        old = old_by_url.get(t.get('url'))
+        if old is None:
+            continue
+        a, b = old.get('paragraphs', []), t.get('paragraphs', [])
+        if a != b:
+            changed += 1
+            first = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+            print(f"  ! paragraphs changed: {t.get('url')} old={len(a)} new={len(b)} first differing index={first}")
+    print(f"  {changed} of {len(new_talks)} talks have a changed paragraph list")
+    return changed
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Scrape LDS General Conference talks to JSON.")
@@ -345,9 +386,11 @@ def main():
             url = f"{base_url}/{conf}?lang=eng"
             talks = scraper.scrape_conference(url)
             if talks:
+                report_paragraph_changes(existing.get(url, []), talks)
                 existing[url] = talks
                 scraper.save_incremental(output_file, existing)
                 print(f"  ✓ Refreshed {conf}: {len(talks)} talks")
+        print(f"Unrecognized <p> classes (kept as body): {sorted(scraper.unknown_classes) or 'none'}")
         return
 
     existing = None

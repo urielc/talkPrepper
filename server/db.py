@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS paragraphs (
     text      TEXT NOT NULL,
     is_note   INTEGER NOT NULL DEFAULT 0,
     marker    INTEGER,                 -- endnote number when is_note, else NULL
-    note_refs TEXT                     -- JSON [{"n": 13, "pos": 185}, ...] for body paragraphs
+    note_refs TEXT,                    -- JSON [{"n": 13, "pos": 185}, ...] for body paragraphs
+    num       INTEGER,                 -- paragraph number shown in Gospel Library; NULL if unnumbered or unknown
+    kind      TEXT                     -- body, quote, author, role, kicker, ...; NULL when the talk has no kinds
 );
 CREATE INDEX IF NOT EXISTS paragraphs_talk ON paragraphs(talk_id, idx);
 
