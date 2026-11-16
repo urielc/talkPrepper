@@ -66,7 +66,7 @@ async function deleteStudy() {
 
 function editSources() {
   topicStore.edit(props.study)
-  router.push({ path: '/lessons', query: { topic: props.study.topic, find: 'topic' } })
+  router.push({ path: '/topic', query: { topic: props.study.topic } })
 }
 
 function pinQuote(q: NonNullable<typeof summary.value>['key_quotes'][number]) {
@@ -81,7 +81,7 @@ const scriptureCount = computed(() => summary.value?.scriptures.length ?? 0)
 <template>
   <div class="study">
     <header class="head">
-      <nav class="crumbs small"><RouterLink to="/lessons?find=topic">Topic studies</RouterLink></nav>
+      <nav class="crumbs small"><RouterLink to="/topic">Topic studies</RouterLink></nav>
       <h1>{{ study.topic }}</h1>
       <div class="byline">
         <span>Topic study</span>

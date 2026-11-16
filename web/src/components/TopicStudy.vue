@@ -19,6 +19,7 @@ import AudienceSelect from './AudienceSelect.vue'
 import SummarizeDialog from './SummarizeDialog.vue'
 
 const props = defineProps<{ initialTopic?: string }>()
+const emit = defineEmits<{ (e: 'searched', topic: string): void }>()
 
 const router = useRouter()
 const lesson = useLessonStore()
@@ -93,14 +94,21 @@ function shownItems(g: TopicGroup): TopicItem[] {
 
 const classLabel = computed(() => AUDIENCE_LABELS[topicStore.audience])
 
-const GROUPS: { key: TopicGroup; title: string }[] = [
-  { key: 'talks', title: 'Conference talks' },
-  { key: 'manuals', title: 'Lessons and manuals' },
-  { key: 'songs', title: 'Hymns and songs' },
-  { key: 'scriptures', title: 'Scripture passages' },
-  { key: 'josephus', title: 'Josephus' },
-  { key: 'apocrypha', title: 'Apocrypha' },
+const GROUPS: { key: TopicGroup; title: string; tab: string }[] = [
+  { key: 'talks', title: 'Conference talks', tab: 'Talks' },
+  { key: 'manuals', title: 'Lessons and manuals', tab: 'Manuals' },
+  { key: 'songs', title: 'Hymns and songs', tab: 'Songs' },
+  { key: 'scriptures', title: 'Scripture passages', tab: 'Scriptures' },
+  { key: 'josephus', title: 'Josephus', tab: 'Josephus' },
+  { key: 'apocrypha', title: 'Apocrypha', tab: 'Apocrypha' },
 ]
+
+// One group shows at a time; a new search opens the first group with results.
+const active = ref<TopicGroup>('talks')
+const countOf = (g: TopicGroup) => (data.value ? data.value[g].length + refineStates[g].additions.length : 0)
+const visibleGroups = computed(() => GROUPS.filter((g) => countOf(g.key) > 0 || isPassageGroup(g.key)))
+const activeGroup = computed(() => GROUPS.find((g) => g.key === active.value) ?? GROUPS[0])
+const nothingFound = computed(() => !!data.value && GROUPS.every((g) => !data.value![g.key].length))
 
 const KIND_LABEL: Record<SourceKind, string> = {
   talk: 'Talk',
@@ -119,7 +127,8 @@ async function run() {
   resetRefine()
   try {
     data.value = await api.topicSearch(t, topicStore.audience)
-    router.replace({ query: { ...router.currentRoute.value.query, topic: t } })
+    if (!data.value[active.value].length) active.value = GROUPS.find((g) => data.value![g.key].length)?.key ?? 'talks'
+    emit('searched', t)
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -200,52 +209,120 @@ onMounted(() => {
   <div class="topic">
     <form class="controls" @submit.prevent="run">
       <AudienceSelect :model-value="topicStore.audience" title="Who the lesson is for" @change="onAudience" />
-      <div class="row">
-        <input
-          v-model="topic"
-          type="search"
-          class="grow"
-          placeholder="A topic, e.g. forgiveness, ministering, the Sabbath"
-          aria-label="Topic"
-          maxlength="300"
-        />
-        <button type="submit" class="primary" :disabled="loading || topic.trim().length < 2">
-          {{ loading ? 'Searching…' : 'Search' }}
-        </button>
-      </div>
+      <input
+        v-model="topic"
+        type="search"
+        class="grow"
+        placeholder="A topic, e.g. forgiveness, ministering, the Sabbath"
+        aria-label="Topic"
+        maxlength="300"
+      />
+      <button type="submit" class="primary" :disabled="loading || topic.trim().length < 2">
+        {{ loading ? 'Searching…' : 'Search' }}
+      </button>
     </form>
 
-    <p v-if="topicStore.editing && !topicStore.queue.length" class="notice small">
-      Editing the sources of “{{ topicStore.editing.topic }}”. Queue some sources, then update the summary.
-      <button class="quiet small" @click="topicStore.stopEditing()">Stop editing</button>
-    </p>
-    <section v-if="topicStore.queue.length" class="tray" aria-label="Queued sources">
-      <p v-if="topicStore.editing" class="faint small">Editing the sources of “{{ topicStore.editing.topic }}”.</p>
-      <div class="row between">
-        <h3>Queued ({{ topicStore.queue.length }} of {{ MAX_SOURCES }})</h3>
-        <button class="quiet small" @click="topicStore.clear()">Clear</button>
-      </div>
-      <ol class="plain queue">
-        <li v-for="(s, i) in topicStore.queue" :key="s.kind + s.ref" class="queued">
-          <span class="kind">{{ KIND_LABEL[s.kind] }}</span>
-          <button class="link title" @click="preview(s)">{{ s.title }}</button>
-          <span class="row ops">
-            <button class="quiet small" :disabled="i === 0" :aria-label="`Move ${s.title} up`" @click="topicStore.move(i, -1)">↑</button>
-            <button class="quiet small" :disabled="i === topicStore.queue.length - 1" :aria-label="`Move ${s.title} down`" @click="topicStore.move(i, 1)">↓</button>
-            <button class="quiet small" :aria-label="`Remove ${s.title}`" @click="topicStore.remove(i)">Remove</button>
-          </span>
-        </li>
-      </ol>
-      <div class="row between summarize">
-        <button v-if="topicStore.editing" class="quiet small" @click="topicStore.stopEditing()">
-          Stop editing “{{ topicStore.editing.topic }}”
-        </button>
-        <span v-else></span>
-        <button class="primary" :disabled="!canSummarize" @click="summarizing = true">
+    <div class="layout">
+      <main class="results-col">
+        <div v-if="error" class="notice error">{{ error }}</div>
+        <p v-else-if="nothingFound" class="empty">Nothing found for “{{ data!.topic }}”. Try other words.</p>
+        <template v-else-if="data">
+          <div class="tabs" role="tablist" aria-label="Kinds of sources">
+            <button
+              v-for="g in visibleGroups"
+              :key="g.key"
+              type="button"
+              role="tab"
+              :id="`tab-${g.key}`"
+              :aria-selected="active === g.key"
+              :aria-controls="`panel-${g.key}`"
+              :class="{ on: active === g.key }"
+              @click="active = g.key"
+            >
+              {{ g.tab }} <span class="count">{{ countOf(g.key) }}</span>
+            </button>
+          </div>
+
+          <section :id="`panel-${active}`" role="tabpanel" :aria-labelledby="`tab-${active}`" class="panel">
+            <div class="panel-head">
+              <h2>{{ activeGroup.title }}</h2>
+              <button v-if="!stateOf(active).reasons" class="small" :disabled="stateOf(active).busy" @click="refine(active)">
+                {{ stateOf(active).busy ? 'Asking AI…' : data[active].length ? 'Refine with AI' : 'Find with AI' }}
+              </button>
+              <button v-else class="quiet small" @click="stateOf(active).showAll = !stateOf(active).showAll">
+                {{ stateOf(active).showAll ? 'AI picks only' : 'Show all matches' }}
+              </button>
+            </div>
+            <div v-if="stateOf(active).error" class="notice error small">{{ stateOf(active).error }}</div>
+            <p v-if="!data[active].length && !stateOf(active).additions.length" class="empty small">
+              No verses matched these words. Use Find with AI to have it suggest passages.
+            </p>
+            <ul class="grid">
+              <li v-for="it in shownItems(active)" :key="it.ref" class="result" :class="{ queued: topicStore.has(it.kind, it.ref) }">
+                <div class="body">
+                  <span v-if="it.kind === 'manual' && it.manual_kind && it.manual_kind !== it.manual" class="kicker">{{ it.manual_kind }}</span>
+                  <span class="result-title">{{ it.kind === 'manual' ? it.manual : it.title }}</span>
+                  <span v-if="it.kind === 'talk'" class="meta">{{ it.speaker }}, {{ it.conference }}</span>
+                  <span v-else-if="it.kind === 'manual'" class="meta">{{ it.title }}</span>
+                  <span v-else-if="it.kind === 'josephus'" class="meta">{{ it.subtitle }}</span>
+                  <span v-if="it.calling" class="meta">{{ it.calling }}</span>
+                  <span v-if="refineStates[active].reasons?.get(it.ref)" class="reason">{{ refineStates[active].reasons!.get(it.ref) }}</span>
+                  <span v-else-if="it.snippet" class="snippet" v-html="safeSnippet(it.snippet)"></span>
+                </div>
+                <div class="actions">
+                  <button class="small" @click="preview(it)">Preview</button>
+                  <button
+                    class="small"
+                    :class="{ gold: topicStore.has(it.kind, it.ref) }"
+                    :disabled="topicStore.has(it.kind, it.ref)"
+                    @click="queueItem(it)"
+                  >
+                    {{ topicStore.has(it.kind, it.ref) ? 'Queued ✓' : 'Queue' }}
+                  </button>
+                  <button v-if="it.kind === 'talk'" class="quiet small" :disabled="opening === it.ref" @click="start(it)">
+                    Use as the lesson
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+        </template>
+        <p v-else-if="!loading" class="hint">
+          Choose who it is for, then enter a topic. Results come back by kind: talks, manuals, songs, scriptures,
+          Josephus and the Apocrypha. Preview any of them and queue the ones to build on.
+        </p>
+      </main>
+
+      <aside class="tray" :class="{ idle: !topicStore.queue.length && !topicStore.editing }" aria-label="Queued sources">
+        <p v-if="topicStore.editing" class="faint small editing">
+          Editing the sources of “{{ topicStore.editing.topic }}”.
+          <button class="quiet small" @click="topicStore.stopEditing()">Stop editing</button>
+        </p>
+        <div class="tray-head">
+          <h2>Queued <span class="count">{{ topicStore.queue.length }} of {{ MAX_SOURCES }}</span></h2>
+          <button v-if="topicStore.queue.length" class="quiet small" @click="topicStore.clear()">Clear</button>
+        </div>
+        <p v-if="!topicStore.queue.length" class="faint small tray-empty">
+          Nothing queued yet. Queued sources become the basis of a study: an AI summary, things to ponder and further
+          material.
+        </p>
+        <ol v-else class="queue">
+          <li v-for="(s, i) in topicStore.queue" :key="s.kind + s.ref" class="queued-item">
+            <span class="kind">{{ KIND_LABEL[s.kind] }}</span>
+            <button class="link title" :title="s.title" @click="preview(s)">{{ s.title }}</button>
+            <span class="ops">
+              <button class="quiet small" :disabled="i === 0" :aria-label="`Move ${s.title} up`" @click="topicStore.move(i, -1)">↑</button>
+              <button class="quiet small" :disabled="i === topicStore.queue.length - 1" :aria-label="`Move ${s.title} down`" @click="topicStore.move(i, 1)">↓</button>
+              <button class="quiet small" :aria-label="`Remove ${s.title}`" @click="topicStore.remove(i)">✕</button>
+            </span>
+          </li>
+        </ol>
+        <button class="primary summarize" :disabled="!canSummarize" @click="summarizing = true">
           {{ topicStore.editing ? 'Update summary' : 'Summarize' }}
         </button>
-      </div>
-    </section>
+      </aside>
+    </div>
+
     <SummarizeDialog
       v-if="summarizing"
       :mode="topicStore.editing ? 'update' : 'create'"
@@ -255,101 +332,194 @@ onMounted(() => {
       @submit="summarize"
       @close="summarizing = false"
     />
-
-    <div v-if="error" class="notice error">{{ error }}</div>
-    <template v-else-if="data">
-      <template v-for="g in GROUPS" :key="g.key">
-        <template v-if="data[g.key].length || isPassageGroup(g.key)">
-          <div class="row between group-head">
-            <h3>{{ g.title }}</h3>
-            <button v-if="!stateOf(g.key).reasons" class="small" :disabled="stateOf(g.key).busy" @click="refine(g.key)">
-              {{ stateOf(g.key).busy ? 'Asking AI…' : data[g.key].length ? 'Refine with AI' : 'Find with AI' }}
-            </button>
-            <button v-else class="quiet small" @click="stateOf(g.key).showAll = !stateOf(g.key).showAll">
-              {{ stateOf(g.key).showAll ? 'AI picks only' : 'Show all matches' }}
-            </button>
-          </div>
-          <div v-if="stateOf(g.key).error" class="notice error small">{{ stateOf(g.key).error }}</div>
-          <p v-if="!data[g.key].length && !stateOf(g.key).additions?.length" class="empty small">No verses matched these words. The AI can suggest passages.</p>
-          <ul class="plain results" :class="{ scroll: g.key === 'talks' }">
-            <li v-for="it in shownItems(g.key)" :key="it.ref" class="result">
-              <div class="body">
-                <span v-if="it.kind === 'manual' && it.manual_kind && it.manual_kind !== it.manual" class="kicker">{{ it.manual_kind }}</span>
-                <span class="result-title">{{ it.kind === 'manual' ? it.manual : it.title }}</span>
-                <span v-if="it.kind === 'talk'" class="meta">{{ it.speaker }}, {{ it.conference }}</span>
-                <span v-else-if="it.kind === 'manual'" class="meta">{{ it.title }}</span>
-                <span v-else-if="it.kind === 'josephus'" class="meta">{{ it.subtitle }}</span>
-                <span v-if="it.calling" class="meta">{{ it.calling }}</span>
-                <span v-if="refineStates[g.key].reasons?.get(it.ref)" class="reason">{{ refineStates[g.key].reasons!.get(it.ref) }}</span>
-                <span v-else-if="it.snippet" class="snippet" v-html="safeSnippet(it.snippet)"></span>
-              </div>
-              <div class="actions">
-                <button class="small" @click="preview(it)">Preview</button>
-                <button
-                  class="small"
-                  :class="{ gold: topicStore.has(it.kind, it.ref) }"
-                  :disabled="topicStore.has(it.kind, it.ref)"
-                  @click="queueItem(it)"
-                >
-                  {{ topicStore.has(it.kind, it.ref) ? 'Queued ✓' : 'Queue' }}
-                </button>
-                <button v-if="it.kind === 'talk'" class="quiet small" :disabled="opening === it.ref" @click="start(it)">
-                  Use as the lesson
-                </button>
-              </div>
-            </li>
-          </ul>
-        </template>
-      </template>
-      <p v-if="GROUPS.every((g) => !data![g.key].length)" class="empty">Nothing found for “{{ data.topic }}”. Try other words.</p>
-    </template>
-    <p v-else-if="!loading" class="faint small hint">
-      Choose who it is for, then enter a topic. Preview any result and queue the ones to build on. Queued sources
-      become the basis of a study, with an AI summary, questions and further material.
-    </p>
   </div>
 </template>
 
 <style scoped>
 .controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+.controls .grow {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.results-col {
+  min-width: 0;
+}
+.layout {
   display: grid;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 24vw, 360px);
+  gap: 1.75rem;
+  align-items: start;
 }
-.summarize {
-  margin-top: 0.6rem;
+
+/* tabs: one per kind of source, with how many results it holds */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--rule-strong);
 }
-.tray {
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
+.tabs button {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0.45rem 0.85rem;
+  margin-bottom: -1px;
+  font: inherit;
+  cursor: pointer;
+}
+.tabs button:hover {
+  color: var(--ink);
+}
+.tabs button.on {
   background: var(--paper);
-  padding: 0.5rem 0.7rem 0.7rem;
-  margin-bottom: 0.75rem;
+  border-color: var(--rule-strong);
+  color: var(--blue);
+  font-weight: 600;
 }
-.tray h3 {
-  margin: 0.2rem 0 0.4rem;
+.count {
+  font-size: var(--fs-0);
+  font-weight: 400;
+  color: var(--ink-3);
+  margin-left: 0.15rem;
 }
-.plain {
+.panel-head,
+.tray-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.panel-head {
+  margin: 1rem 0 0.75rem;
+}
+h2 {
+  font-size: var(--fs-3);
+  margin: 0;
+}
+.grid {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 0.75rem;
 }
-.plain li + li {
+.result {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.result.queued {
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.body > span {
+  display: block;
+}
+.result-title {
+  font-weight: 600;
+  line-height: 1.3;
+}
+.meta {
+  margin-top: 0.15rem;
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.snippet,
+.reason {
+  margin-top: 0.4rem;
+  font-size: var(--fs-0);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.reason {
+  border-left: 2px solid var(--gold);
+  padding-left: 0.5rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.kind,
+.kicker {
+  color: var(--gold-2);
+  font-size: var(--fs-0);
+  flex-shrink: 0;
+}
+.hint {
+  max-width: 38rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* the queue stays in view while the results scroll */
+.tray {
+  position: sticky;
+  top: calc(var(--header-h) + 1rem);
+  max-height: calc(100vh - var(--header-h) - 2rem);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.tray-empty,
+.editing {
+  margin: 0;
+  line-height: 1.5;
+}
+.queue {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.queued-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.4rem;
+  padding: 0.4rem 0;
   border-top: 1px solid var(--rule);
 }
-.queued {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0;
+.queued-item .kind {
+  grid-column: 1;
 }
-.queued .title {
-  flex: 1;
-  min-width: 0;
+.queued-item .title {
+  grid-column: 1;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.queued-item .ops {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: flex;
+  gap: 0.1rem;
 }
 .link {
   border: 0;
@@ -359,76 +529,31 @@ onMounted(() => {
   font: inherit;
   cursor: pointer;
 }
-.ops {
-  flex-shrink: 0;
-  gap: 0.15rem;
+.summarize {
+  width: 100%;
 }
-.kind,
-.kicker {
-  color: var(--gold-2);
-  font-size: var(--fs-0);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-}
-.results {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
-.results.scroll {
-  max-height: 50vh;
-  overflow: auto;
-}
-.result {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.55rem 0.7rem;
-}
-.body > span {
-  display: block;
-}
-.result-title {
-  font-weight: 600;
-}
-.meta {
-  margin-top: 0.1rem;
-  font-size: var(--fs-0);
-  color: var(--ink-2);
-}
-.snippet {
-  margin-top: 0.3rem;
-  font-size: var(--fs-0);
-  line-height: 1.45;
-  color: var(--ink-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-h3 {
-  font-size: var(--fs-2);
-  margin: 1.1rem 0 0.4rem;
-}
-.group-head {
-  align-items: flex-end;
-}
-.reason {
-  margin-top: 0.3rem;
-  font-size: var(--fs-0);
-  line-height: 1.45;
-  color: var(--ink-2);
-  border-left: 2px solid var(--gold);
-  padding-left: 0.5rem;
-}
-.hint {
-  line-height: 1.5;
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* on a phone the queue comes first, so Summarize is reachable without scrolling past every result */
+  .tray {
+    position: static;
+    max-height: none;
+    order: -1;
+  }
+  .tray.idle {
+    display: none;
+  }
+  /* one swipeable row of tabs instead of a wrapped second row */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs button {
+    flex-shrink: 0;
+  }
 }
 </style>

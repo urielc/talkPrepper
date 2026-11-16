@@ -97,7 +97,7 @@ function posterFallback(e: Event) {
           Lesson prep
           <span class="menu-sub">{{ lesson.mine.length ? `${lesson.mine.length} in progress · pick or continue a talk` : 'pick a talk to begin' }}</span>
         </RouterLink>
-        <RouterLink :to="{ path: '/lessons', query: { find: 'topic' } }" class="menu-link">
+        <RouterLink to="/topic" class="menu-link">
           Find talks by topic
           <span class="menu-sub">for children, teens or adults</span>
         </RouterLink>

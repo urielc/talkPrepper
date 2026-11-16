@@ -6,6 +6,7 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: () => import('./views/LandingView.vue') },
     { path: '/lessons', name: 'lessons', component: () => import('./views/LessonsView.vue') },
+    { path: '/topic', name: 'topic', component: () => import('./views/TopicView.vue') },
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/set-password', name: 'set-password', component: () => import('./views/SetPasswordView.vue'), meta: { public: true } },
     { path: '/account', name: 'account', component: () => import('./views/AccountView.vue') },

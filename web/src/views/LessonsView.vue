@@ -1,20 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api, AUDIENCE_LABELS, type Conference, type MyLesson, type StudyListItem, type TalkSummary } from '../api'
-import TopicStudy from '../components/TopicStudy.vue'
+import AudienceSelect from '../components/AudienceSelect.vue'
 import { lessonRoute, talkRoute } from '../router'
 import { useAuthStore } from '../stores/auth'
 import { useLessonStore } from '../stores/lesson'
+import { useTopicStore } from '../stores/topic'
 
 const auth = useAuthStore()
 const lesson = useLessonStore()
 const route = useRoute()
+const router = useRouter()
+const topicStore = useTopicStore()
 
-// How to find a talk: by topic (suggestions) or by conference. A ?topic= link opens the topic tab.
+// How to start: by topic (opens the topic page) or by conference. Old ?topic= links go to the topic page.
 type Finder = 'topic' | 'conference'
 const initialTopic = typeof route.query.topic === 'string' ? route.query.topic : ''
-const wantTopic = !!initialTopic || route.query.find === 'topic'
+if (initialTopic) router.replace({ path: '/topic', query: { topic: initialTopic } })
+const wantTopic = route.query.find === 'topic'
+const topicQuery = ref('')
+
+function openTopic() {
+  const t = topicQuery.value.trim()
+  if (t.length >= 2) router.push({ path: '/topic', query: { topic: t } })
+}
 const finder = ref<Finder>(wantTopic ? 'topic' : 'conference')
 if (!wantTopic) {
   try {
@@ -139,7 +149,7 @@ function lessonMeta(m: MyLesson): string {
     <section class="col mine">
       <h1>{{ firstName ? `${firstName}, your lessons` : 'Your lessons' }}</h1>
       <p v-if="!lesson.mine.length" class="empty">
-        Nothing in progress. Search a topic on the right to build a study, find a talk by conference, or open a talk
+        Nothing in progress. Search a topic to build a study, find a talk by conference, or open a talk
         and choose “Add to my lessons” in its header.
       </p>
       <ul v-else class="cards">
@@ -213,7 +223,29 @@ function lessonMeta(m: MyLesson): string {
           By conference
         </button>
       </div>
-      <TopicStudy v-if="finder === 'topic'" :initial-topic="initialTopic" />
+      <template v-if="finder === 'topic'">
+        <form class="topic-start" @submit.prevent="openTopic">
+          <AudienceSelect :model-value="topicStore.audience" title="Who the lesson is for" @change="topicStore.setAudience" />
+          <div class="row">
+            <input
+              v-model="topicQuery"
+              type="search"
+              class="grow"
+              placeholder="A topic, e.g. forgiveness, ministering, the Sabbath"
+              aria-label="Topic"
+              maxlength="300"
+            />
+            <button type="submit" class="primary" :disabled="topicQuery.trim().length < 2">Search</button>
+          </div>
+        </form>
+        <p class="faint small">
+          Search talks, manuals, songs, scriptures, Josephus and the Apocrypha on a topic, then queue sources for an AI
+          study summary.
+        </p>
+        <p v-if="topicStore.queue.length" class="small">
+          <RouterLink to="/topic">{{ topicStore.queue.length }} {{ topicStore.queue.length === 1 ? 'source' : 'sources' }} queued. Continue</RouterLink>
+        </p>
+      </template>
       <template v-else>
       <div class="controls">
         <select v-model="conferenceId" aria-label="Conference">
@@ -245,6 +277,12 @@ function lessonMeta(m: MyLesson): string {
 </template>
 
 <style scoped>
+.topic-start {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.4rem;
+}
+
 .lessons {
   max-width: 1400px;
   margin: 0 auto;
